@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <string>
+#include "Token.hpp"
 #include "parser.tab.h"
 
 extern FILE *yyin;
@@ -14,17 +15,21 @@ int yyerror(std::string s);
 
 %}
 
-%union {
-    int number;      // For numeric literals
-    char *string;    // For identifiers
+%code requires {
+
+
+
 }
 
-%token <string> IDENTIFIER
-%token <number> NUMBER
-%token PROGRAM PROCEDURE IS T_BEGIN END IF THEN ELSE ENDIF WHILE DO ENDWHILE REPEAT UNTIL FOR FROM TO DOWNTO READ WRITE ENDFOR
-%token T_ASSIGN T_PLUS T_MINUS T_MUL T_DIV T_MOD T_EQ T_NEQ T_GT T_LT T_GTE T_LTE
+%union {
+    Token* token;
+}
 
-%type <number> value
+%token <token> IDENTIFIER
+%token <token> NUMBER
+%token <token> PROGRAM PROCEDURE IS T_BEGIN END IF THEN ELSE ENDIF WHILE DO ENDWHILE REPEAT UNTIL FOR FROM TO DOWNTO READ WRITE ENDFOR
+%token <token> T_ASSIGN T_PLUS T_MINUS T_MUL T_DIV T_MOD T_EQ T_NEQ T_GT T_LT T_GTE T_LTE
+%token <token> UNKNOWN
 
 %%
 
@@ -36,7 +41,7 @@ program_all:
 procedures:
     procedures PROCEDURE proc_head IS declarations T_BEGIN commands END   { ; }
     | procedures PROCEDURE proc_head IS T_BEGIN commands END              { ; }
-    | /* epsilon */                                                       { ; }
+    | /* no procedures */                                                       { ; }
     ;
 
 main:
@@ -50,7 +55,7 @@ commands:
     ;
 
 command:
-    IDENTIFIER T_ASSIGN expression ';'                            { std::cout << $1 << ":="; }
+    IDENTIFIER T_ASSIGN expression ';'                            { ; }
     | IF condition THEN commands ELSE commands ENDIF              { ; }
     | IF condition THEN commands ENDIF                            { ; }
     | WHILE condition DO commands ENDWHILE                        { ; }
@@ -71,10 +76,10 @@ proc_call:
     ;
 
 declarations:
-    declarations ',' IDENTIFIER                             { std::cout << ", " << $3 << std::endl; }
-    | declarations ',' IDENTIFIER '[' NUMBER ':' NUMBER ']' { std::cout << ", " << $3 << std::endl; }
-    | IDENTIFIER                                            { std::cout << $1; }
-    | IDENTIFIER '[' NUMBER ':' NUMBER ']'                  { std::cout << $1; }
+    declarations ',' IDENTIFIER                             { ; }
+    | declarations ',' IDENTIFIER '[' NUMBER ':' NUMBER ']' { ; }
+    | IDENTIFIER                                            { ; }
+    | IDENTIFIER '[' NUMBER ':' NUMBER ']'                  { ; }
     ;
 
 args_decl:
@@ -91,27 +96,27 @@ args:
 
 expression:
     value                                            { ; }
-    | value T_PLUS value                             { std::cout << $1 << " + " << $3; }
-    | value T_MINUS value                            { std::cout << $1 << " - " << $3; }
-    | value T_MUL value                              { std::cout << $1 << " * " << $3; }
-    | value T_DIV value                              { std::cout << $1 << " / " << $3; }
-    | value T_MOD value                              { std::cout << $1 << " % " << $3; }
+    | value T_PLUS value                             { ; }
+    | value T_MINUS value                            { ; }
+    | value T_MUL value                              { ; }
+    | value T_DIV value                              { ; }
+    | value T_MOD value                              { ; }
     ;
 
 condition:
-    value T_EQ value                                 { std::cout << "="; }
-    | value T_NEQ value                              { std::cout << "!="; }
-    | value T_GT value                               { std::cout << ">"; }
-    | value T_LT value                               { std::cout << "<"; }
-    | value T_GTE value                              { std::cout << ">="; }
-    | value T_LTE value                              { std::cout << "<="; }
+    value T_EQ value                                 { ; }
+    | value T_NEQ value                              { ; }
+    | value T_GT value                               { ; }
+    | value T_LT value                               { ; }
+    | value T_GTE value                              { ; }
+    | value T_LTE value                              { ; }
     ;
 
 value:
-    NUMBER                                           { $$ = $1; }
-    | IDENTIFIER                                     { std::cout << $1 << std::endl; }
-    | IDENTIFIER '[' IDENTIFIER ']'                  { std::cout << $1 << "[" << $3 << "]" << std::endl; }
-    | IDENTIFIER '[' NUMBER ']'                      { std::cout << $1 << "[" << $3 << "]" << std::endl; }
+    NUMBER                                           { ; }
+    | IDENTIFIER                                     { ; }
+    | IDENTIFIER '[' IDENTIFIER ']'                  { ; }
+    | IDENTIFIER '[' NUMBER ']'                      { ; }
     ;
 
 %%

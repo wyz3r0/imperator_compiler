@@ -14,7 +14,7 @@ $(TARGET): $(OBJS)
 	$(CC) -o $@ $^
 
 lex.yy.c: $(LEXER) parser.tab.h
-	$(FLEX) $(LEXER)
+	$(FLEX) --header-file=lex.yy.h $(LEXER)
 
 parser.tab.c parser.tab.h: $(PARSER)
 	$(BISON) -d $(PARSER)
