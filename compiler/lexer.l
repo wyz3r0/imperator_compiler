@@ -1,56 +1,51 @@
 %{
 #include "parser.tab.h"
+#include <stdlib.h>
+#include <string.h>
 %}
-
-DIGIT      [0-9]
-LETTER     [_a-z]
-ID         {LETTER}({LETTER}|{DIGIT})*
-NUM        {DIGIT}+
 
 %%
 
-"PROGRAM"            { return PROGRAM_TOKEN; }
-"IS"                 { return IS_TOKEN; }
-"BEGIN"              { return BEGIN_TOKEN; }
-"END"                { return END_TOKEN; }
-"IF"                 { return IF_TOKEN; }
-"THEN"               { return THEN_TOKEN; }
-"ELSE"               { return ELSE_TOKEN; }
-"ENDIF"              { return ENDIF_TOKEN; }
-"FOR"                { return FOR_TOKEN; }
-"TO"                 { return TO_TOKEN; }
-"DOWNTO"             { return DOWNTO_TOKEN; }
-"DO"                 { return DO_TOKEN; }
-"ENDFOR"             { return ENDFOR_TOKEN; }
-"REPEAT"             { return REPEAT_TOKEN; }
-"UNTIL"              { return UNTIL_TOKEN; }
-"PROCEDURE"          { return PROCEDURE_TOKEN; }
-"READ"               { return READ_TOKEN; }
-"WRITE"              { return WRITE_TOKEN; }
-"HALT"               { return HALT_TOKEN; }
-"="                  { return EQ_TOKEN; }
-"!="                 { return NEQ_TOKEN; }
-">"                  { return GT_TOKEN; }
-"<"                  { return LT_TOKEN; }
-">="                 { return GEQ_TOKEN; }
-"<="                 { return LEQ_TOKEN; }
-":"                  { return COLON_TOKEN; }
-";"                  { return SEMICOLON_TOKEN; }
-","                  { return COMMA_TOKEN; }
-"["                  { return LBRACKET_TOKEN; }
-"]"                  { return RBRACKET_TOKEN; }
-"("                  { return LPAREN_TOKEN; }
-")"                  { return RPAREN_TOKEN; }
-"+"                  { return PLUS_TOKEN; }
-"-"                  { return MINUS_TOKEN; }
-"*"                  { return TIMES_TOKEN; }
-"/"                  { return DIV_TOKEN; }
-"%"                  { return MOD_TOKEN; }
-{ID}                 { yylval.sval = strdup(yytext); return PIDENTIFIER_TOKEN; }
-{NUM}                { yylval.ival = atoi(yytext); return NUM_TOKEN; }
-[ \t\n]+             ; /* Ignore whitespace */
-"#".*                ; /* Ignore comments */
-.                    { return yytext[0]; }
+^#(.|\\\n)*\n  { ; } // Ignore comments
+
+"PROGRAM"      { return PROGRAM; }
+"PROCEDURE"    { return PROCEDURE; }
+"IS"           { return IS; }
+"BEGIN"        { return T_BEGIN; }
+"END"          { return END; }
+"IF"           { return IF; }
+"THEN"         { return THEN; }
+"ELSE"         { return ELSE; }
+"ENDIF"        { return ENDIF; }
+"WHILE"        { return WHILE; }
+"DO"           { return DO; }
+"ENDWHILE"     { return ENDWHILE; }
+"REPEAT"       { return REPEAT; }
+"UNTIL"        { return UNTIL; }
+"FOR"          { return FOR; }
+"ENDFOR"       { return ENDFOR; }
+"FROM"         { return FROM; }
+"TO"           { return TO; }
+"DOWNTO"       { return DOWNTO; }
+"READ"         { return READ; }
+"WRITE"        { return WRITE; }
+":="           { return T_ASSIGN; }
+"\+"           { return T_PLUS; }
+"-"            { return T_MINUS; }
+"\*"           { return T_MUL; }
+"/"            { return T_DIV; }
+"%"            { return T_MOD; }
+"="            { return T_EQ; }
+"!="           { return T_NEQ; }
+">"            { return T_GT; }
+"<"            { return T_LT; }
+">="           { return T_GTE; }
+"<="           { return T_LTE; }
+
+[0-9]+          { yylval.number = atoi(yytext); return NUMBER; }
+[_a-z]+         { yylval.string = strdup(yytext); return IDENTIFIER; }
+[ \t\n]+        ; // Ignore whitespace
+.               { return yytext[0]; } // Return single characters
 
 %%
 

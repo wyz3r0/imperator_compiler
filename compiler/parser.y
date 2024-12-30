@@ -1,85 +1,122 @@
 %{
+#define YYDEBUG 1
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <iostream>
+#include <string>
+#include "parser.tab.h"
 
-void yyerror(const char *s);
-int yylex();
+extern FILE *yyin;
+extern int yylex();
+extern int yyparse();
+int yyerror(std::string s);
+
 %}
 
 %union {
-    int ival;
-    char *sval;
+    int number;      // For numeric literals
+    char *string;    // For identifiers
 }
 
-%token <ival> NUM
-%token <sval> PIDENTIFIER
-%token PROGRAM IS BEGIN END IF THEN ELSE ENDIF FOR TO DOWNTO DO ENDFOR REPEAT UNTIL PROCEDURE READ WRITE HALT
-%token EQ NEQ GT LT GEQ LEQ COLON SEMICOLON COMMA LBRACKET RBRACKET LPAREN RPAREN PLUS MINUS TIMES DIV MOD FROM
+%token <string> IDENTIFIER
+%token <number> NUMBER
+%token PROGRAM PROCEDURE IS T_BEGIN END IF THEN ELSE ENDIF WHILE DO ENDWHILE REPEAT UNTIL FOR FROM TO DOWNTO READ WRITE ENDFOR
+%token T_ASSIGN T_PLUS T_MINUS T_MUL T_DIV T_MOD T_EQ T_NEQ T_GT T_LT T_GTE T_LTE
+
+%type <number> value
 
 %%
 
-program:
-    PROGRAM IS declarations BEGIN commands END
-    {
-        printf("Program parsed successfully!\n");
-    };
+program_all:
+    procedures main                         { ; }
+    | main                                  { ; }
+    ;
 
-declarations:
-    declarations ',' PIDENTIFIER
-    | declarations ',' PIDENTIFIER LBRACKET NUM COLON NUM RBRACKET
-    | PIDENTIFIER
-    | PIDENTIFIER LBRACKET NUM COLON NUM RBRACKET;
+procedures:
+    procedures PROCEDURE proc_head IS declarations T_BEGIN commands END   { ; }
+    | procedures PROCEDURE proc_head IS T_BEGIN commands END              { ; }
+    | /* epsilon */                                                       { ; }
+    ;
+
+main:
+    PROGRAM IS declarations T_BEGIN commands END    { ; }
+    | PROGRAM IS T_BEGIN commands END               { ; }
+    ;
 
 commands:
-    commands command
-    | command;
+    commands command                                { ; }
+    | command                                       { ; }
+    ;
 
 command:
-    PIDENTIFIER COLON EQ expression SEMICOLON
-    | IF condition THEN commands ENDIF
-    | IF condition THEN commands ELSE commands ENDIF
-    | FOR PIDENTIFIER FROM NUM TO NUM DO commands ENDFOR
-    | FOR PIDENTIFIER FROM NUM DOWNTO NUM DO commands ENDFOR
-    | REPEAT commands UNTIL condition SEMICOLON
-    | READ PIDENTIFIER SEMICOLON
-    | WRITE expression SEMICOLON;
+    IDENTIFIER T_ASSIGN expression ';'                            { std::cout << $1 << ":="; }
+    | IF condition THEN commands ELSE commands ENDIF              { ; }
+    | IF condition THEN commands ENDIF                            { ; }
+    | WHILE condition DO commands ENDWHILE                        { ; }
+    | REPEAT commands UNTIL condition ';'                         { ; }
+    | FOR IDENTIFIER FROM value TO value DO commands ENDFOR       { ; }
+    | FOR IDENTIFIER FROM value DOWNTO value DO commands ENDFOR   { ; }
+    | proc_call ';'                                               { ; }
+    | READ IDENTIFIER ';'                                         { ; }
+    | WRITE value ';'                                             { ; }
+    ;
+
+proc_head:
+    IDENTIFIER '(' args_decl ')'    { ; }
+    ;
+
+proc_call:
+    IDENTIFIER '(' args ')'         { ; }
+    ;
+
+declarations:
+    declarations ',' IDENTIFIER                             { std::cout << ", " << $3 << std::endl; }
+    | declarations ',' IDENTIFIER '[' NUMBER ':' NUMBER ']' { std::cout << ", " << $3 << std::endl; }
+    | IDENTIFIER                                            { std::cout << $1; }
+    | IDENTIFIER '[' NUMBER ':' NUMBER ']'                  { std::cout << $1; }
+    ;
+
+args_decl:
+    args_decl ',' IDENTIFIER                         { ; }
+    | args_decl ',' 'T' IDENTIFIER                   { ; }
+    | IDENTIFIER                                     { ; }
+    | 'T' IDENTIFIER                                 { ; }
+    ;
+
+args:
+    args ',' IDENTIFIER                              { ; }
+    | IDENTIFIER                                     { ; }
+    ;
 
 expression:
-    NUM
-    | PIDENTIFIER
-    | expression PLUS expression
-    | expression MINUS expression
-    | expression TIMES expression
-    | expression DIV expression
-    | expression MOD expression;
+    value                                            { ; }
+    | value T_PLUS value                             { std::cout << $1 << " + " << $3; }
+    | value T_MINUS value                            { std::cout << $1 << " - " << $3; }
+    | value T_MUL value                              { std::cout << $1 << " * " << $3; }
+    | value T_DIV value                              { std::cout << $1 << " / " << $3; }
+    | value T_MOD value                              { std::cout << $1 << " % " << $3; }
+    ;
 
 condition:
-    expression EQ expression
-    | expression NEQ expression
-    | expression GT expression
-    | expression LT expression
-    | expression GEQ expression
-    | expression LEQ expression;
+    value T_EQ value                                 { std::cout << "="; }
+    | value T_NEQ value                              { std::cout << "!="; }
+    | value T_GT value                               { std::cout << ">"; }
+    | value T_LT value                               { std::cout << "<"; }
+    | value T_GTE value                              { std::cout << ">="; }
+    | value T_LTE value                              { std::cout << "<="; }
+    ;
+
+value:
+    NUMBER                                           { $$ = $1; }
+    | IDENTIFIER                                     { std::cout << $1 << std::endl; }
+    | IDENTIFIER '[' IDENTIFIER ']'                  { std::cout << $1 << "[" << $3 << "]" << std::endl; }
+    | IDENTIFIER '[' NUMBER ']'                      { std::cout << $1 << "[" << $3 << "]" << std::endl; }
+    ;
 
 %%
 
-void yyerror(const char *s) {
-    fprintf(stderr, "Error: %s\n", s);
-}
-
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <input file>\n", argv[0]);
-        return 1;
-    }
-    FILE *input = fopen(argv[1], "r");
-    if (!input) {
-        perror("Error opening input file");
-        return 1;
-    }
-    yyin = input;
-    yyparse();
-    fclose(input);
-    return 0;
+int yyerror(std::string s) {
+    std::cout << s << std::endl;
+    return 1;
 }

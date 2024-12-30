@@ -1,1 +1,7 @@
 vm
+compiler/*.o
+compiler/*.yy.*
+compiler/*.tab.*
+compiler/compiler
+example_compiler
+.vscode
