@@ -19,12 +19,15 @@ int main(int argc, char* argv[]) {
 
     yyin = file;
 
-    // while (yylex()) {
-    //     yylval.token->print();
-    // }
-
-    yylex();
-    yyparse();
+    if (argc >=3 && strcmp(argv[2],"-l")==0) {
+        // Write all the tokens
+        while (yylex()) {
+            yylval.token->print();
+        }
+    }
+    else {
+        yyparse();
+    }
 
     fclose(file);
 

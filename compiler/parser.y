@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include "Token.hpp"
+#include "Node.hpp"
 #include "parser.tab.h"
 
 extern FILE *yyin;
