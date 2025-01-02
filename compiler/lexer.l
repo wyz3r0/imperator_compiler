@@ -1,6 +1,6 @@
+
 %option yylineno
 %option noyywrap
-
 
 %{
 #include "Token.hpp"
@@ -10,14 +10,13 @@
 #include <cstdlib>
 
 extern YYSTYPE yylval;
-// extern int 0;
+#define YYSTYPE *Token
 
-#define YYSTYPE Token::Token
 %}
 
 %%
 
-^#(.|\\\n)*\n              { /* Ignore comments */ }
+^#(.|\\\n)*\n              { /* Ignore comments */; }
 
 "PROGRAM"                  { yylval.token = new Token(TokenType::PROGRAM, "PROGRAM", yylineno, 0); return PROGRAM; }
 "PROCEDURE"                { yylval.token = new Token(TokenType::PROCEDURE, "PROCEDURE", yylineno, 0); return PROCEDURE; }
@@ -42,18 +41,35 @@ extern YYSTYPE yylval;
 "WRITE"                    { yylval.token = new Token(TokenType::WRITE, "WRITE", yylineno, 0); return WRITE; }
 
 ":="                       { yylval.token = new Token(TokenType::T_ASSIGN, ":=", yylineno, 0); return T_ASSIGN; }
-"\\+"                      { yylval.token = new Token(TokenType::T_PLUS, "+", yylineno, 0); return T_PLUS; }
+"+"                        { yylval.token = new Token(TokenType::T_PLUS, "+", yylineno, 0); return T_PLUS; }
 "-"                        { yylval.token = new Token(TokenType::T_MINUS, "-", yylineno, 0); return T_MINUS; }
-"\\*"                      { yylval.token = new Token(TokenType::T_MUL, "*", yylineno, 0); return T_MUL; }
+"*"                        { yylval.token = new Token(TokenType::T_MUL, "*", yylineno, 0); return T_MUL; }
 "/"                        { yylval.token = new Token(TokenType::T_DIV, "/", yylineno, 0); return T_DIV; }
 "%"                        { yylval.token = new Token(TokenType::T_MOD, "%", yylineno, 0); return T_MOD; }
+","                        { yylval.token = new Token(TokenType::T_COMMA, ",", yylineno, 0); return T_COMMA; }
 
-[0-9]+                     { yylval.token = new Token(TokenType::NUMBER, atoi(yytext), yylineno, 0); return NUMBER; }
+"="                        { yylval.token = new Token(TokenType::T_EQ, "=", yylineno, 0); return T_EQ; }
+"!="                       { yylval.token = new Token(TokenType::T_NEQ, "!=", yylineno, 0); return T_NEQ; }
+">"                        { yylval.token = new Token(TokenType::T_GT, ">", yylineno, 0); return T_GT; }
+"<"                        { yylval.token = new Token(TokenType::T_LT, "<", yylineno, 0); return T_LT; }
+">="                       { yylval.token = new Token(TokenType::T_GTE, ">=", yylineno, 0); return T_GTE; }
+"<="                       { yylval.token = new Token(TokenType::T_LTE, "<=", yylineno, 0); return T_LTE; }
+
+";"                        { yylval.token = new Token(TokenType::T_SEMICOLON, ";", yylineno, 0); return T_SEMICOLON; }
+":"                        { yylval.token = new Token(TokenType::T_COLON, ":", yylineno, 0); return T_COLON; }
+"T"                        { yylval.token = new Token(TokenType::T_TABLE, "T", yylineno, 0); return T_TABLE; }
+"("                        { yylval.token = new Token(TokenType::T_LPAREN, "(", yylineno, 0); return T_LPAREN; }
+")"                        { yylval.token = new Token(TokenType::T_RPAREN, ")", yylineno, 0); return T_RPAREN; }
+"["                        { yylval.token = new Token(TokenType::T_LBRACKET, "[", yylineno, 0); return T_LBRACKET; }
+"]"                        { yylval.token = new Token(TokenType::T_RBRACKET, "]", yylineno, 0); return T_RBRACKET; }
+
+[0-9]+                     { yylval.token = new Token(TokenType::NUMBER, std::stol(yytext), yylineno, 0); return NUMBER; }
 
 [_a-z]+                    { yylval.token = new Token(TokenType::IDENTIFIER, yytext, yylineno, 0); return IDENTIFIER; }
 
-[ \t\r\n]+                 { /* Ignore whitespace */ }
+[ \t\r\n]+                 { /* Ignore whitespace */; }
 
-.                          { yylval.token = new Token(TokenType::UNKNOWN, yytext, yylineno, 0); return UNKNOWN; }
+.                          { std::cerr << "Unexpected character: " << yytext << " at line " << yylineno << std::endl; }
+
 
 %%

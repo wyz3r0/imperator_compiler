@@ -3,5 +3,7 @@ compiler/*.o
 compiler/*.yy.*
 compiler/*.tab.*
 compiler/compiler
+compiler/parser.output
+compiler/test.imp
 example_compiler
 .vscode
