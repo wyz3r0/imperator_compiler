@@ -1,4 +1,5 @@
-#include "Token.hpp"  // Include your Token class definition
+#include "Token.hpp"
+#include "Node.hpp"
 #include <iostream>
 #include <cstdio>
 #include "parser.tab.h"
@@ -19,7 +20,7 @@ int main(int argc, char* argv[]) {
 
     yyin = file;
 
-    if (argc >=3 && strcmp(argv[2],"-l")==0) {
+    if (argc >=3 && strcmp(argv[2],"-t")==0) {
         // Write all the tokens
         while (yylex()) {
             yylval.token->print();

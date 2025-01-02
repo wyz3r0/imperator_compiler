@@ -4,6 +4,7 @@
 
 %{
 #include "Token.hpp"
+#include "Node.hpp"
 #include "parser.tab.h"
 #include <iostream>
 #include <string>
