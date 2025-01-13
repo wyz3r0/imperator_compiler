@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <iostream>
 #include <string>
+#include <vector>
+#include <algorithm>
 #include "Token.hpp"
 #include "Node.hpp"
 #include "parser.tab.h"
@@ -13,6 +15,12 @@ extern FILE *yyin;
 extern int yylex();
 extern int yyparse();
 int yyerror(std::string s);
+
+std::vector<Token*> variable_vector;
+
+// 0 is for the ACC
+// 1-4 are for registers
+int var_counter = 5;
 
 %}
 
@@ -43,17 +51,20 @@ int yyerror(std::string s);
 
 program_all:
     procedures main {
-        $$ = new Node(NodeType::PROGRAM_ALL);
+        $$ = new ProgramAllNode();
         $$->addChild($1);  // Add procedures node
         $$->addChild($2);  // Add main node
         printf("Parsed program_all\n");
         $$->print();
+        for (auto *i: variable_vector) {
+            i->print();
+        }
     }
     ;
 
 procedures:
     procedures PROCEDURE proc_head IS declarations T_BEGIN commands END {
-        $$ = new Node(NodeType::PROCEDURES);
+        $$ = new ProceduresNode();
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($5);  // Add declarations
@@ -61,27 +72,27 @@ procedures:
         printf("Parsed procedures with declarations\n");
     }
     | procedures PROCEDURE proc_head IS T_BEGIN commands END {
-        $$ = new Node(NodeType::PROCEDURES);
+        $$ = new ProceduresNode();
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($6);  // Add commands
         printf("Parsed procedures without declarations\n");
     }
     | %empty {
-        $$ = new Node(NodeType::PROCEDURES);
+        $$ = new ProceduresNode();
         printf("Parsed empty procedures\n");
     }
     ;
 
 main:
     PROGRAM IS declarations T_BEGIN commands END {
-        $$ = new Node(NodeType::MAIN);
+        $$ = new MainNode();
         $$->addChild($3);  // Add declarations
         $$->addChild($5);  // Add commands
         printf("Parsed main with declarations\n");
     }
     | PROGRAM IS T_BEGIN commands END {
-        $$ = new Node(NodeType::MAIN);
+        $$ = new MainNode();
         $$->addChild($4);  // Add commands
         printf("Parsed main without declarations\n");
     }
@@ -89,82 +100,80 @@ main:
 
 commands:
     commands command {
-        $$ = new Node(NodeType::COMMANDS);
+        $$ = new CommandsNode();
         $$->addChild($1);  // Add previous commands
         $$->addChild($2);  // Add the current command
         printf("Parsed commands (multiple)\n");
     }
     | command {
-        $$ = new Node(NodeType::COMMANDS);
+        $$ = new CommandsNode();
         $$->addChild($1);  // Add the single command
         printf("Parsed command (single)\n");
     }
     | %empty {
-        $$ = new Node(NodeType::COMMANDS);
+        $$ = new CommandsNode();
         printf("Parsed empty command\n");
     }
     ;
 
 command:
     identifier T_ASSIGN expression T_SEMICOLON {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new AssignmentCommandNode();
         $$->addChild($1);  // Add IDENTIFIER token
         $$->addChild($3);  // Add the expression
         printf("Parsed assignment command\n");
     }
     | IF condition THEN commands ELSE commands ENDIF {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new IfElseCommandNode();
         $$->addChild($2);  // Add condition
         $$->addChild($4);  // Add then commands
         $$->addChild($6);  // Add else commands
         printf("Parsed IF-ELSE command\n");
     }
     | IF condition THEN commands ENDIF {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new IfCommandNode();
         $$->addChild($2);  // Add condition
         $$->addChild($4);  // Add commands
         printf("Parsed IF command\n");
     }
     | WHILE condition DO commands ENDWHILE {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new WhileCommandNode();
         $$->addChild($2);  // Add condition
         $$->addChild($4);  // Add commands
         printf("Parsed WHILE command\n");
     }
     | REPEAT commands UNTIL condition T_SEMICOLON {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new RepeatCommandNode();
         $$->addChild($2);  // Add commands
         $$->addChild($4);  // Add condition
         printf("Parsed REPEAT command\n");
     }
     | FOR IDENTIFIER FROM value TO value DO commands ENDFOR {
-        $$ = new Node(NodeType::COMMAND);
-        $$->addTokenChild($2);  // Add IDENTIFIER token
+        $$ = new ForCommandNode($2); // Add IDENTIFIER token
         $$->addChild($4);  // Add the first value
         $$->addChild($6);  // Add the second value
         $$->addChild($8);  // Add commands
         printf("Parsed FOR command (TO)\n");
     }
     | FOR IDENTIFIER FROM value DOWNTO value DO commands ENDFOR {
-        $$ = new Node(NodeType::COMMAND);
-        $$->addTokenChild($2);  // Add IDENTIFIER token
+        $$ = new ForCommandNode($2); // Add IDENTIFIER token
         $$->addChild($4);  // Add the first value
         $$->addChild($6);  // Add the second value
         $$->addChild($8);  // Add commands
         printf("Parsed FOR command (DOWNTO)\n");
     }
     | proc_call T_SEMICOLON {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new ProcCallCommandNode();
         $$->addChild($1);  // Add procedure call
         printf("Parsed procedure call command\n");
     }
     | READ identifier T_SEMICOLON {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new ReadCommandNode();
         $$->addChild($2);  // Add IDENTIFIER token
         printf("Parsed READ command\n");
     }
     | WRITE value T_SEMICOLON {
-        $$ = new Node(NodeType::COMMAND);
+        $$ = new WriteCommandNode();
         $$->addChild($2);  // Add value
         printf("Parsed WRITE command\n");
     }
@@ -172,8 +181,7 @@ command:
 
 proc_head:
     IDENTIFIER T_LPAREN args_decl T_RPAREN {
-        $$ = new Node(NodeType::PROC_HEAD);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
+        $$ = new ProcHeadNode($1); // Add IDENTIFIER token
         $$->addChild($3);  // Add arguments declaration
         printf("Parsed procedure head\n");
     }
@@ -181,113 +189,121 @@ proc_head:
 
 proc_call:
     IDENTIFIER T_LPAREN args T_RPAREN {
-        $$ = new Node(NodeType::PROC_CALL);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
+        $$ = new ProcHeadNode($1); // Add IDENTIFIER token
         $$->addChild($3);  // Add arguments
         printf("Parsed procedure call\n");
     }
     ;
 
+/* TODO : Add separate declarations to the procedures */
 declarations:
     declarations T_COMMA IDENTIFIER {
-        $$ = new Node(NodeType::DECLARATIONS);
+        $$ = new DeclarationsNode($3); // Add IDENTIFIER token
         $$->addChild($1);  // Add previous declarations
-        $$->addTokenChild($3);  // Add IDENTIFIER token
+
+        variable_vector.push_back($3);
+        var_counter++;
+
         printf("Parsed declarations (multiple)\n");
     }
     | declarations T_COMMA IDENTIFIER T_LBRACKET NUMBER T_COLON NUMBER T_RBRACKET {
-        $$ = new Node(NodeType::DECLARATIONS);
+        $$ = new DeclarationsNode();
         $$->addChild($1);  // Add previous declarations
-        $$->addTokenChild($3);  // Add IDENTIFIER token
-        $$->addTokenChild($5);  // Add lower bound of array
-        $$->addTokenChild($7);  // Add upper bound of array
+        // $$->addTokenChild($3);  // Add IDENTIFIER token
+        // $$->addTokenChild($5);  // Add lower bound of array
+        // $$->addTokenChild($7);  // Add upper bound of array
+
+        variable_vector.push_back($3);
+        var_counter++;
+
         printf("Parsed declarations with array\n");
     }
     | IDENTIFIER {
-        $$ = new Node(NodeType::DECLARATIONS);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
+        $$ = new DeclarationsNode($1);
+
+        variable_vector.push_back($1);
+        var_counter++;
+
         printf("Parsed single declaration\n");
     }
     | IDENTIFIER T_LBRACKET NUMBER T_COLON NUMBER T_RBRACKET {
-        $$ = new Node(NodeType::DECLARATIONS);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
-        $$->addTokenChild($3);  // Add lower bound
-        $$->addTokenChild($5);  // Add upper bound
+        $$ = new DeclarationsNode();
+        // $$->addTokenChild($1);  // Add IDENTIFIER token
+        // $$->addTokenChild($3);  // Add lower bound
+        // $$->addTokenChild($5);  // Add upper bound
+
+        variable_vector.push_back($1);
+        var_counter++;
+
         printf("Parsed single array declaration\n");
     }
     ;
 
 args_decl:
     args_decl T_COMMA IDENTIFIER {
-        $$ = new Node(NodeType::ARGS_DECL);
+        $$ = new ArgsDeclNode($3);  // Add IDENTIFIER token
         $$->addChild($1);  // Add previous argument declaration
-        $$->addTokenChild($3);  // Add IDENTIFIER token
         printf("Parsed arguments declaration (multiple)\n");
     }
     | args_decl T_COMMA T_TABLE IDENTIFIER {
-        $$ = new Node(NodeType::ARGS_DECL);
+        $$ = new ArgsDeclNode($3);  // Add IDENTIFIER token
         $$->addChild($1);  // Add previous argument declaration
-        $$->addTokenChild($3);  // Add TABLE IDENTIFIER token
         printf("Parsed arguments declaration with table\n");
     }
     | IDENTIFIER {
-        $$ = new Node(NodeType::ARGS_DECL);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
+        $$ = new ArgsDeclNode($1); // Add IDENTIFIER token
         printf("Parsed single argument declaration\n");
     }
     | T_TABLE IDENTIFIER {
-        $$ = new Node(NodeType::ARGS_DECL);
-        $$->addTokenChild($2);  // Add TABLE IDENTIFIER token
+        $$ = new ArgsDeclNode($2); // Add IDENTIFIER token
         printf("Parsed single table argument declaration\n");
     }
     ;
 
 args:
     args T_COMMA IDENTIFIER {
-        $$ = new Node(NodeType::ARGS);
+        $$ = new ArgsNode($3); // Add IDENTIFIER token
         $$->addChild($1);  // Add previous arguments
-        $$->addTokenChild($3);  // Add IDENTIFIER token
         printf("Parsed arguments (multiple)\n");
     }
     | IDENTIFIER {
-        $$ = new Node(NodeType::ARGS);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
+        $$ = new ArgsNode($1); // Add IDENTIFIER token
         printf("Parsed single argument\n");
     }
     ;
 
 expression:
     value {
-        $$ = new Node(NodeType::EXPRESSION);
+        $$ = new ExpressionNode();
         $$->addChild($1);  // Add value
         printf("Parsed expression (single value)\n");
     }
     | value T_PLUS value {
-        $$ = new Node(NodeType::EXPRESSION);
+        $$ = new ExpressionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (addition)\n");
     }
     | value T_MINUS value {
-        $$ = new Node(NodeType::EXPRESSION);
+        $$ = new ExpressionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (subtraction)\n");
     }
     | value T_MUL value {
-        $$ = new Node(NodeType::EXPRESSION);
+        $$ = new ExpressionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (multiplication)\n");
     }
     | value T_DIV value {
-        $$ = new Node(NodeType::EXPRESSION);
+        $$ = new ExpressionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (division)\n");
     }
     | value T_MOD value {
-        $$ = new Node(NodeType::EXPRESSION);
+        $$ = new ExpressionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (modulus)\n");
@@ -296,37 +312,37 @@ expression:
 
 condition:
     value T_EQ value {
-        $$ = new Node(NodeType::CONDITION);
+        $$ = new ConditionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (equal)\n");
     }
     | value T_NEQ value {
-        $$ = new Node(NodeType::CONDITION);
+        $$ = new ConditionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (not equal)\n");
     }
     | value T_GT value {
-        $$ = new Node(NodeType::CONDITION);
+        $$ = new ConditionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (greater than)\n");
     }
     | value T_LT value {
-        $$ = new Node(NodeType::CONDITION);
+        $$ = new ConditionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (less than)\n");
     }
     | value T_GTE value {
-        $$ = new Node(NodeType::CONDITION);
+        $$ = new ConditionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (greater than or equal)\n");
     }
     | value T_LTE value {
-        $$ = new Node(NodeType::CONDITION);
+        $$ = new ConditionNode($2);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (less than or equal)\n");
@@ -335,12 +351,11 @@ condition:
 
 value:
     NUMBER {
-        $$ = new Node(NodeType::VALUE);
-        $$->addTokenChild($1);  // Add NUMBER token
+        $$ = new ValueNode($1); // Add NUMBER token
         printf("Parsed value (number)\n");
     }
     | identifier {
-        $$ = new Node(NodeType::VALUE);
+        $$ = new ValueNode();
         $$->addChild($1);  // Add IDENTIFIER token
         printf("Parsed value (identifier)\n");
     }
@@ -348,20 +363,19 @@ value:
 
 identifier:
     IDENTIFIER {
-        $$ = new Node(NodeType::IDENTIFIER);
-        $$->addTokenChild($1);  // Add IDENTIFIER token
+        $$ = new IdentifierNode($1);
         printf("Parsed identifier\n");
     }
     | IDENTIFIER T_LBRACKET IDENTIFIER T_RBRACKET {
-        $$ = new Node(NodeType::IDENTIFIER);
-        $$->addTokenChild($1);
-        $$->addTokenChild($3);
+        $$ = new IdentifierNode();
+        // $$->addTokenChild($1);
+        // $$->addTokenChild($3);
         printf("Parsed array identifier (variable index)\n");
     }
     | IDENTIFIER T_LBRACKET NUMBER T_RBRACKET {
-        $$ = new Node(NodeType::IDENTIFIER);
-        $$->addTokenChild($1);
-        $$->addTokenChild($3);
+        $$ = new IdentifierNode();
+        // $$->addTokenChild($1);
+        // $$->addTokenChild($3);
         printf("Parsed array identifier (number index)\n");
     }
     ;
