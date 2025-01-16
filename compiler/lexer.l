@@ -64,7 +64,7 @@ extern YYSTYPE yylval;
 "["                        { yylval.token = new Token(TokenType::T_LBRACKET, "[", yylineno, 0); return T_LBRACKET; }
 "]"                        { yylval.token = new Token(TokenType::T_RBRACKET, "]", yylineno, 0); return T_RBRACKET; }
 
-[0-9]+                     { yylval.token = new Token(TokenType::NUMBER, std::stol(yytext), yylineno, 0); return NUMBER; }
+-*[0-9]+                     { yylval.token = new Token(TokenType::NUMBER, yytext, yylineno, 0); return NUMBER; }
 
 [_a-z]+                    { yylval.token = new Token(TokenType::IDENTIFIER, yytext, yylineno, 0); return IDENTIFIER; }
 

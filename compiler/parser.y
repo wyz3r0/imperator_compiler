@@ -16,11 +16,35 @@ extern int yylex();
 extern int yyparse();
 int yyerror(std::string s);
 
-std::vector<Token*> variable_vector;
+/*
+    REGISTERS:
+        R0 - ACC
+        R1 - temp var 1
+        R2 - temp var 2
+        R3 - temp var 3 (can be return in some cases)
+        R4 - return val
+*/
 
-// 0 is for the ACC
-// 1-4 are for registers
-int var_counter = 5;
+std::vector<Token*> tokens;
+
+long long var_counter = 7;
+long long condition_counter = 0;
+long long command_counter = 0;
+
+Token* manageToken(Token* newToken) {
+    auto it = std::find_if(tokens.begin(), tokens.end(),
+                           [&newToken](Token* token) { return token->getValue() == newToken->getValue(); });
+
+    if (it != tokens.end()) {
+        return *it;
+    }
+
+    newToken->setAddress(var_counter);
+    tokens.push_back(newToken);
+    var_counter++;
+
+    return newToken;
+}
 
 %}
 
@@ -50,15 +74,23 @@ int var_counter = 5;
 %%
 
 program_all:
+    {
+        // INIT
+
+        // Reserve addresses 5 and 6 for bools.
+        tokens.push_back(new Token(TokenType::NUMBER, "0", 0, 0, 5));
+        tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6));
+    }
     procedures main {
         $$ = new ProgramAllNode();
-        $$->addChild($1);  // Add procedures node
-        $$->addChild($2);  // Add main node
+        $$->addChild($2);  // Add procedures node
+        $$->addChild($3);  // Add main node
         printf("Parsed program_all\n");
         $$->print();
-        for (auto *i: variable_vector) {
-            i->print();
+        for (auto token : tokens) {
+            token->print();
         }
+        std::cout << ($$->build(&tokens));
     }
     ;
 
@@ -118,45 +150,45 @@ commands:
 
 command:
     identifier T_ASSIGN expression T_SEMICOLON {
-        $$ = new AssignmentCommandNode();
+        $$ = new AssignmentCommandNode($2, command_counter++);
         $$->addChild($1);  // Add IDENTIFIER token
         $$->addChild($3);  // Add the expression
         printf("Parsed assignment command\n");
     }
     | IF condition THEN commands ELSE commands ENDIF {
-        $$ = new IfElseCommandNode();
+        $$ = new IfElseCommandNode($1, command_counter++);
         $$->addChild($2);  // Add condition
         $$->addChild($4);  // Add then commands
         $$->addChild($6);  // Add else commands
         printf("Parsed IF-ELSE command\n");
     }
     | IF condition THEN commands ENDIF {
-        $$ = new IfCommandNode();
+        $$ = new IfCommandNode($1, command_counter++);
         $$->addChild($2);  // Add condition
         $$->addChild($4);  // Add commands
         printf("Parsed IF command\n");
     }
     | WHILE condition DO commands ENDWHILE {
-        $$ = new WhileCommandNode();
+        $$ = new WhileCommandNode($1, command_counter++);
         $$->addChild($2);  // Add condition
         $$->addChild($4);  // Add commands
         printf("Parsed WHILE command\n");
     }
     | REPEAT commands UNTIL condition T_SEMICOLON {
-        $$ = new RepeatCommandNode();
+        $$ = new RepeatCommandNode($1, command_counter++);
         $$->addChild($2);  // Add commands
         $$->addChild($4);  // Add condition
         printf("Parsed REPEAT command\n");
     }
     | FOR IDENTIFIER FROM value TO value DO commands ENDFOR {
-        $$ = new ForCommandNode($2); // Add IDENTIFIER token
+        $$ = new ForToCommandNode(manageToken($2), command_counter++); // Add IDENTIFIER token
         $$->addChild($4);  // Add the first value
         $$->addChild($6);  // Add the second value
         $$->addChild($8);  // Add commands
         printf("Parsed FOR command (TO)\n");
     }
     | FOR IDENTIFIER FROM value DOWNTO value DO commands ENDFOR {
-        $$ = new ForCommandNode($2); // Add IDENTIFIER token
+        $$ = new ForDownToCommandNode(manageToken($2), command_counter++); // Add IDENTIFIER token
         $$->addChild($4);  // Add the first value
         $$->addChild($6);  // Add the second value
         $$->addChild($8);  // Add commands
@@ -198,11 +230,8 @@ proc_call:
 /* TODO : Add separate declarations to the procedures */
 declarations:
     declarations T_COMMA IDENTIFIER {
-        $$ = new DeclarationsNode($3); // Add IDENTIFIER token
+        $$ = new DeclarationsNode(manageToken($3)); // Add IDENTIFIER token
         $$->addChild($1);  // Add previous declarations
-
-        variable_vector.push_back($3);
-        var_counter++;
 
         printf("Parsed declarations (multiple)\n");
     }
@@ -213,16 +242,14 @@ declarations:
         // $$->addTokenChild($5);  // Add lower bound of array
         // $$->addTokenChild($7);  // Add upper bound of array
 
-        variable_vector.push_back($3);
+        $3->setAddress(var_counter);
+        // TODO: increase by the length of the table
         var_counter++;
 
         printf("Parsed declarations with array\n");
     }
     | IDENTIFIER {
-        $$ = new DeclarationsNode($1);
-
-        variable_vector.push_back($1);
-        var_counter++;
+        $$ = new DeclarationsNode(manageToken($1));
 
         printf("Parsed single declaration\n");
     }
@@ -232,7 +259,8 @@ declarations:
         // $$->addTokenChild($3);  // Add lower bound
         // $$->addTokenChild($5);  // Add upper bound
 
-        variable_vector.push_back($1);
+        $1->setAddress(var_counter);
+        // TODO: increase by the length of the table
         var_counter++;
 
         printf("Parsed single array declaration\n");
@@ -312,37 +340,37 @@ expression:
 
 condition:
     value T_EQ value {
-        $$ = new ConditionNode($2);
+        $$ = new ConditionNode($2, condition_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (equal)\n");
     }
     | value T_NEQ value {
-        $$ = new ConditionNode($2);
+        $$ = new ConditionNode($2, condition_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (not equal)\n");
     }
     | value T_GT value {
-        $$ = new ConditionNode($2);
+        $$ = new ConditionNode($2, condition_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (greater than)\n");
     }
     | value T_LT value {
-        $$ = new ConditionNode($2);
+        $$ = new ConditionNode($2, condition_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (less than)\n");
     }
     | value T_GTE value {
-        $$ = new ConditionNode($2);
+        $$ = new ConditionNode($2, condition_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (greater than or equal)\n");
     }
     | value T_LTE value {
-        $$ = new ConditionNode($2);
+        $$ = new ConditionNode($2, condition_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed condition (less than or equal)\n");
@@ -351,7 +379,7 @@ condition:
 
 value:
     NUMBER {
-        $$ = new ValueNode($1); // Add NUMBER token
+        $$ = new ValueNode(manageToken($1)); // Add NUMBER token
         printf("Parsed value (number)\n");
     }
     | identifier {
@@ -363,7 +391,7 @@ value:
 
 identifier:
     IDENTIFIER {
-        $$ = new IdentifierNode($1);
+        $$ = new IdentifierNode(manageToken($1));
         printf("Parsed identifier\n");
     }
     | IDENTIFIER T_LBRACKET IDENTIFIER T_RBRACKET {
