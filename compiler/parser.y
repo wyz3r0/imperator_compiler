@@ -4,17 +4,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
+#include <sstream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include "Token.hpp"
 #include "Node.hpp"
+#include "postprocessing.hpp"
 #include "parser.tab.h"
 
+extern const std::string parsedFileName;
 extern FILE *yyin;
 extern int yylex();
 extern int yyparse();
 int yyerror(std::string s);
+
+void rise_error(std::string s, Token* token);
+
+std::vector<std::string> errors;
 
 /*
     REGISTERS:
@@ -31,6 +39,18 @@ long long var_counter = 7;
 long long condition_counter = 0;
 long long command_counter = 0;
 
+Token* manageInitializedToken(Token* newToken) {
+    auto it = std::find_if(tokens.begin(), tokens.end(),
+                           [&newToken](Token* token) { return token->getValue() == newToken->getValue(); });
+
+    if (it != tokens.end()) {
+        return *it;
+    }
+    rise_error("Using uninitialized variable", newToken);
+
+    return nullptr;
+}
+
 Token* manageToken(Token* newToken) {
     auto it = std::find_if(tokens.begin(), tokens.end(),
                            [&newToken](Token* token) { return token->getValue() == newToken->getValue(); });
@@ -45,6 +65,19 @@ Token* manageToken(Token* newToken) {
 
     return newToken;
 }
+
+bool saveToFile(const std::string& content) {
+    std::string outputFileName = parsedFileName + ".mr";
+    std::ofstream outFile(outputFileName);
+    if (outFile.is_open()) {
+        outFile << content;
+        outFile.close();
+        return true;
+    } else {
+        return false;
+    }
+}
+
 
 %}
 
@@ -74,9 +107,7 @@ Token* manageToken(Token* newToken) {
 %%
 
 program_all:
-    {
-        // INIT
-
+    {   // INIT
         // Reserve addresses 5 and 6 for bools.
         tokens.push_back(new Token(TokenType::NUMBER, "0", 0, 0, 5));
         tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6));
@@ -90,7 +121,24 @@ program_all:
         for (auto token : tokens) {
             token->print();
         }
-        std::cout << ($$->build(&tokens));
+
+        if (errors.size() > 0) {
+            for (std::string error : errors){
+                std::cout << error << std::endl;
+            }
+            return 1;
+        }
+
+        // Build assembly.
+        std::string assembly = $$->build(&tokens);
+        std::cout << "First pass assembly:" << std::endl << assembly << std::endl;
+
+        assembly = calculate_jumps(assembly);
+        std::cout << "Assembly with calculated jumps:" << std::endl << assembly << std::endl;
+
+        if (!saveToFile(assembly)) {
+            std::cout << "FATAL COMPILATION ERROR" << std::endl;
+        }
     }
     ;
 
@@ -382,6 +430,11 @@ value:
         $$ = new ValueNode(manageToken($1)); // Add NUMBER token
         printf("Parsed value (number)\n");
     }
+    | T_MINUS NUMBER {
+        Token* negative_number = new Token(TokenType::NUMBER, $1->getValue() + $2->getValue(), $1->getLine(), $2->getColumn());
+        $$ = new ValueNode(manageToken(negative_number)); // Add NUMBER token
+        printf("Parsed value (negative number)\n");
+    }
     | identifier {
         $$ = new ValueNode();
         $$->addChild($1);  // Add IDENTIFIER token
@@ -391,6 +444,8 @@ value:
 
 identifier:
     IDENTIFIER {
+        // TODO: check if the token is initialized
+        // $$ = new IdentifierNode(manageInitializedToken($1));
         $$ = new IdentifierNode(manageToken($1));
         printf("Parsed identifier\n");
     }
@@ -410,13 +465,13 @@ identifier:
 
 %%
 
-int yyerror(std::string s) {
-    std::cout << s << " : ";
-    if (yylval.token) {
-        yylval.token->print();
-    } else {
-        printf("unexpected token\n");
-    }
+void rise_error(std::string s, Token* token) {
+    std::ostringstream error;
+    error << "ERROR: " << s << ": \"" << token->getValue() << "\", on line: " << token->getLine();
+    errors.push_back(error.str());
+}
 
+int yyerror(std::string s) {
+    errors.push_back(s);
     return 1;
 }

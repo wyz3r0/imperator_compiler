@@ -57,7 +57,7 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
-        // TODO : determine whether bools are used to optimise 75 overhead.
+        // TODO : determine whether bools and constants are used to optimise 75 overhead.
         // INIT bools.
         assembly << "SET " << 1 << std::endl;
         assembly << "STORE " << 6 << std::endl;
@@ -91,6 +91,7 @@ public:
     std::string getNodeType() const override { return "PROCEDURES"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - procedures, 1 - main
 
         for (auto node : children) {
             assembly << node->build();
@@ -106,6 +107,8 @@ public:
     std::string getNodeType() const override { return "MAIN"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - declarations, 1 - commands
+        // 0 - commands
 
         // Build declarations and commands.
         for (auto node : children) {
@@ -122,6 +125,9 @@ public:
     std::string getNodeType() const override { return "COMMANDS"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - prev commands, 1 - command
+        // 1 - command
+        // %empty%
 
         // Build all the commands.
         for (auto node : children) {
@@ -138,6 +144,7 @@ public:
     std::string getNodeType() const override { return "ASSIGNMENT_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - identifier, 1 - expression
 
         assembly << children[1]->build();                                       // Put value into R4
         assembly << "LOAD " << 4 << std::endl;
@@ -153,6 +160,7 @@ public:
     std::string getNodeType() const override { return "IF_ELSE_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - condition, 1 - then, 2 - else
 
         assembly << children[0]->build();                       // In R4 will be 1 if True or 0 if False
         assembly << "LOAD " << 4 << std::endl;
@@ -173,6 +181,7 @@ public:
     std::string getNodeType() const override { return "IF_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - condition, 1 - then
 
         assembly << children[0]->build();                       // In R4 will be 1 if True or 0 if False
         assembly << "LOAD " << 4 << std::endl;
@@ -190,10 +199,15 @@ public:
     std::string getNodeType() const override { return "WHILE_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - condition, 1 - command
 
-        for (auto node : children) {
-            assembly << node->build();
-        }
+        assembly << children[0]->build();                           // In R4 will be 1 if True or 0 if False
+        assembly << "LOAD " << 4 << std::endl;
+        assembly << "*COND_WHILE_" << id << " ";                    // Label CONDITION of the while
+        assembly << "JZERO " << "*END_WHILE_" << id << std::endl;   // If False jump to END label
+        assembly << children[1]->build();                           // Insert COMMAND block
+        assembly << "JUMP " << "*COND_WHILE_" << id << std::endl;   // Jump to the CONDITION of the while
+        assembly << "*END_WHILE_" << id << " ";                     // Label END of the while
 
         return assembly.str();
     }
@@ -205,48 +219,69 @@ public:
     std::string getNodeType() const override { return "REPEAT_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - command, 1 - condition
 
-        for (auto node : children) {
-            assembly << node->build();
-        }
+        assembly << "*REPEAT_START_" << id << " ";                  // Label START of the if
+        assembly << children[0]->build();                           // Insert COMMAND block
+        assembly << children[1]->build();                           // Insert CONDITION of the repeat
+        assembly << "LOAD " << 4 << std::endl;
+        assembly << "JPOS " << "*REPEAT_START_" << id << std::endl; // If True jump to START label
 
         return assembly.str();
     }
 };
 
+// ! something wrong when limits are variables
 class ForToCommandNode : public Node {
 public:
     explicit ForToCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
     std::string getNodeType() const override { return "FORTO_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - lower_bound, 1 - upper_bound, 2 - commands
+        // token - identifier
 
+        // TODO : store upper_bound in separate const
+        // TODO : check iterator reassignment inside
         assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Load lower_bound
         assembly << "STORE " << token->getAddress() << std::endl;               // Set iterator to lower_bound
-        assembly << "*FOR_BODY_" << id << " " << children[2]->build();          // Insert for body and label
+        assembly << "*FOR_BODY_" << id  << " ";                                 // Label BODY of for
+        assembly << "SUB " << children[1]->token->getAddress() << std::endl;    // Check whether iterator - upper_bound > 0
+        assembly << "JPOS " << "*FOR_END_" << id << std::endl;                  // If iterator - upper_bound > 0
+        assembly << children[2]->build();                                       // Insert for body and label
         assembly << "LOAD " << token->getAddress() << std::endl;                // Load iterator
         assembly << "ADD " << 6 << std::endl;                                   // ADD 1 to iterator
-        assembly << "SUB " << children[1]->token->getAddress() << std::endl;    // Check whether iterator - upper_bound = 0
-        assembly << "JNEG " << "*FOR_BODY_" << id << std::endl;                 // If iterator - upper_bound < 0 jump to FOR_BODY block
+        assembly << "STORE " << token->getAddress() << std::endl;               // Store increased iterator
+        assembly << "JUMP " << "*FOR_BODY_" << id << std::endl;                 // Jump to FOR_BODY block
+        assembly << "*FOR_END_" << id << " ";                                   // Label END of for
 
         return assembly.str();
     }
 };
 
+// ! something wrong when limits are variables
 class ForDownToCommandNode : public Node {
 public:
     explicit ForDownToCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
     std::string getNodeType() const override { return "FORDOWNTO_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - upper_bound, 1 - lower_bound, 2 - commands
+        // token - identifier
 
-        assembly << "LOAD " << children[1]->token->getAddress() << std::endl;   // Load upper_bound
+        // TODO : store lower_bound in separate const
+        // TODO : check iterator reassignment inside
+        assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Load upper_bound
         assembly << "STORE " << token->getAddress() << std::endl;               // Set iterator to upper_bound
-        assembly << "*FOR_BODY_" << id << " " << children[2]->build();          // Insert for body and label
+        assembly << "*FOR_BODY_" << id  << " ";                                 // Label BODY of for
+        assembly << "SUB " << children[1]->token->getAddress() << std::endl;    // Check whether iterator - lowe_bound < 0
+        assembly << "JNEG " << "*FOR_END_" << id << std::endl;                  // If iterator - upper_bound < 0
+        assembly << children[2]->build();                                       // Insert for body and label
         assembly << "LOAD " << token->getAddress() << std::endl;                // Load iterator
         assembly << "SUB " << 6 << std::endl;                                   // SUB 1 from iterator
-        assembly << "SUB " << children[0]->token->getAddress() << std::endl;    // Check whether iterator - lower_bound = 0
-        assembly << "JPOS " << "*FOR_BODY_" << id << std::endl;                 // If iterator - lower_bound > 0 jump to FOR_BODY block
+        assembly << "STORE " << token->getAddress() << std::endl;               // Store increased iterator
+        assembly << "JUMP " << "*FOR_BODY_" << id << std::endl;                 // Jump to FOR_BODY block
+        assembly << "*FOR_END_" << id << " ";                                   // Label END of for
 
         return assembly.str();
     }
@@ -258,6 +293,7 @@ public:
     std::string getNodeType() const override { return "PROC_CALL_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - proc_call
 
         for (auto node : children) {
             assembly << node->build();
@@ -273,6 +309,7 @@ public:
     std::string getNodeType() const override { return "READ_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - identifier
 
         assembly << "GET " << children[0]->token->getAddress() << std::endl;
 
@@ -286,6 +323,7 @@ public:
     std::string getNodeType() const override { return "WRITE_COMMAND"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - value
 
         assembly << children[0]->build();
         assembly << "PUT " << 4 << std::endl;
@@ -300,6 +338,8 @@ public:
     std::string getNodeType() const override { return "PROC_HEAD"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - ard_declaration
+        // token - procedure_identifier
 
         for (auto node : children) {
             assembly << node->build();
@@ -315,6 +355,8 @@ public:
     std::string getNodeType() const override { return "PROC_CALL"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
+        // 0 - args
+        // token - procedure_identifier
 
         for (auto node : children) {
             assembly << node->build();
@@ -330,8 +372,6 @@ public:
     std::string getNodeType() const override { return "DECLARATIONS"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
-
-        // TODO : set variavle values
 
         for (auto node : children) {
             assembly << node->build();
@@ -377,7 +417,13 @@ public:
     std::string getNodeType() const override { return "EXPRESSION"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
-        assembly << std::endl;
+        // 0 - a, 1 - b
+        // token - operator
+
+        if (token == nullptr) {
+            assembly << children[0]->build();       // Store value in R4
+            return assembly.str();                  // Return early cause there is no token.
+        }
 
         std::string operation = token->getValue();
 
@@ -422,8 +468,6 @@ public:
             assembly << "LOAD " << 4 << std::endl;
             assembly << "MOD " << 1 << std::endl;
             assembly << "STORE " << 4 << std::endl; // Store result in R4
-        } else {
-            assembly << children[0]->build();       // Store value in R4
         }
 
         return assembly.str();
