@@ -31,6 +31,8 @@ std::vector<std::string> errors;
         R2 - temp var 2
         R3 - temp var 3 (can be return in some cases)
         R4 - return val
+        R5 - 0 (false)
+        R6 - 1 (true)
 */
 
 std::vector<Token*> tokens;
@@ -39,17 +41,6 @@ long long var_counter = 7;
 long long condition_counter = 0;
 long long command_counter = 0;
 
-Token* manageInitializedToken(Token* newToken) {
-    auto it = std::find_if(tokens.begin(), tokens.end(),
-                           [&newToken](Token* token) { return token->getValue() == newToken->getValue(); });
-
-    if (it != tokens.end()) {
-        return *it;
-    }
-    rise_error("Using uninitialized variable", newToken);
-
-    return nullptr;
-}
 
 Token* manageToken(Token* newToken) {
     auto it = std::find_if(tokens.begin(), tokens.end(),
@@ -64,6 +55,22 @@ Token* manageToken(Token* newToken) {
     var_counter++;
 
     return newToken;
+}
+
+Token* manageTabel(Token* identifier, Token* lower_bound, Token* upper_bound) {
+    if (std::stoll(lower_bound->getValue()) > std::stoll(upper_bound->getValue())) {
+        rise_error("Lower bound is greater than upper bound", identifier);
+    }
+
+    identifier->setAddress(var_counter-std::stoll(lower_bound->getValue()));    // Set absolute address of 0th index
+    tokens.push_back(identifier);                                               // Add identifier to the tokens withh 0th index's address
+
+    for (long long i = std::stoll(lower_bound->getValue()); i <= std::stoll(upper_bound->getValue()); i++) {
+        tokens.push_back(new Token(TokenType::IDENTIFIER, identifier->getValue() + std::to_string(i), identifier->getColumn(), identifier->getLine(), var_counter, true));
+        var_counter++;
+    }
+
+    return identifier;
 }
 
 bool saveToFile(const std::string& content) {
@@ -100,7 +107,7 @@ bool saveToFile(const std::string& content) {
 %left  T_MUL T_DIV T_MOD
 %left  T_LPAREN T_LBRACKET
 
-%type <node> program_all procedures main commands command proc_head proc_call declarations args_decl args expression condition value identifier
+%type <node> program_all procedures main commands command proc_head proc_call declarations args_decl args expression condition value identifier number
 
 %start program_all
 
@@ -109,8 +116,8 @@ bool saveToFile(const std::string& content) {
 program_all:
     {   // INIT
         // Reserve addresses 5 and 6 for bools.
-        tokens.push_back(new Token(TokenType::NUMBER, "0", 0, 0, 5));
-        tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6));
+        tokens.push_back(new Token(TokenType::NUMBER, "0", 0, 0, 5, false));
+        tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6, false));
     }
     procedures main {
         $$ = new ProgramAllNode();
@@ -122,7 +129,7 @@ program_all:
             token->print();
         }
 
-        if (errors.size() > 0) {
+        if (!errors.empty()) {
             for (std::string error : errors){
                 std::cout << error << std::endl;
             }
@@ -198,6 +205,7 @@ commands:
 
 command:
     identifier T_ASSIGN expression T_SEMICOLON {
+        // TODO: check if the identifier is reassignable
         $$ = new AssignmentCommandNode($2, command_counter++);
         $$->addChild($1);  // Add IDENTIFIER token
         $$->addChild($3);  // Add the expression
@@ -229,6 +237,8 @@ command:
         printf("Parsed REPEAT command\n");
     }
     | FOR IDENTIFIER FROM value TO value DO commands ENDFOR {
+        $2->setAssignability(false);
+        // TODO: error if identifier has the same value as initialized variable
         $$ = new ForToCommandNode(manageToken($2), command_counter++); // Add IDENTIFIER token
         $$->addChild($4);  // Add the first value
         $$->addChild($6);  // Add the second value
@@ -236,6 +246,8 @@ command:
         printf("Parsed FOR command (TO)\n");
     }
     | FOR IDENTIFIER FROM value DOWNTO value DO commands ENDFOR {
+        $2->setAssignability(false);
+        // TODO: error if identifier has the same value as initialized variable
         $$ = new ForDownToCommandNode(manageToken($2), command_counter++); // Add IDENTIFIER token
         $$->addChild($4);  // Add the first value
         $$->addChild($6);  // Add the second value
@@ -275,41 +287,30 @@ proc_call:
     }
     ;
 
-/* TODO : Add separate declarations to the procedures */
 declarations:
     declarations T_COMMA IDENTIFIER {
-        $$ = new DeclarationsNode(manageToken($3)); // Add IDENTIFIER token
-        $$->addChild($1);  // Add previous declarations
+        $$ = new DeclarationsNode(manageToken($3->setAssignability(true)));  // Add IDENTIFIER token
+        $$->addChild($1);               // Add previous declarations
 
         printf("Parsed declarations (multiple)\n");
     }
-    | declarations T_COMMA IDENTIFIER T_LBRACKET NUMBER T_COLON NUMBER T_RBRACKET {
-        $$ = new DeclarationsNode();
+    | declarations T_COMMA IDENTIFIER T_LBRACKET number T_COLON number T_RBRACKET {
+        Token* lower_bound = $5->token;
+        Token* upper_bound = $7->token;
+        $$ = new DeclarationsNode(manageTabel($3, lower_bound, upper_bound));
         $$->addChild($1);  // Add previous declarations
-        // $$->addTokenChild($3);  // Add IDENTIFIER token
-        // $$->addTokenChild($5);  // Add lower bound of array
-        // $$->addTokenChild($7);  // Add upper bound of array
-
-        $3->setAddress(var_counter);
-        // TODO: increase by the length of the table
-        var_counter++;
 
         printf("Parsed declarations with array\n");
     }
     | IDENTIFIER {
-        $$ = new DeclarationsNode(manageToken($1));
+        $$ = new DeclarationsNode(manageToken($1->setAssignability(true)));  // Add IDENTIFIER token
 
         printf("Parsed single declaration\n");
     }
-    | IDENTIFIER T_LBRACKET NUMBER T_COLON NUMBER T_RBRACKET {
-        $$ = new DeclarationsNode();
-        // $$->addTokenChild($1);  // Add IDENTIFIER token
-        // $$->addTokenChild($3);  // Add lower bound
-        // $$->addTokenChild($5);  // Add upper bound
-
-        $1->setAddress(var_counter);
-        // TODO: increase by the length of the table
-        var_counter++;
+    | IDENTIFIER T_LBRACKET number T_COLON number T_RBRACKET {
+        Token* lower_bound = $3->token;
+        Token* upper_bound = $5->token;
+        $$ = new DeclarationsNode(manageTabel($1, lower_bound, upper_bound));
 
         printf("Parsed single array declaration\n");
     }
@@ -426,48 +427,63 @@ condition:
     ;
 
 value:
-    NUMBER {
-        $$ = new ValueNode(manageToken($1)); // Add NUMBER token
+    number {
+        $$ = new ValueNode();   // Add NUMBER token
+        $$->addChild($1);
         printf("Parsed value (number)\n");
-    }
-    | T_MINUS NUMBER {
-        Token* negative_number = new Token(TokenType::NUMBER, $1->getValue() + $2->getValue(), $1->getLine(), $2->getColumn());
-        $$ = new ValueNode(manageToken(negative_number)); // Add NUMBER token
-        printf("Parsed value (negative number)\n");
     }
     | identifier {
         $$ = new ValueNode();
-        $$->addChild($1);  // Add IDENTIFIER token
+        $$->addChild($1);       // Add IDENTIFIER token
         printf("Parsed value (identifier)\n");
     }
     ;
 
+number:
+    NUMBER {
+        $1->setAssignability(false);
+        $$ = new NumberNode(manageToken($1)); // Add NUMBER token
+        printf("Parsed number\n");
+    }
+    | T_MINUS NUMBER {
+        Token* negative_number = new Token(TokenType::NUMBER, $1->getValue() + $2->getValue(), $1->getLine(), $2->getColumn(), -1, false);
+        // Delete unnecessary tokens
+        delete $1;
+        $1 = nullptr;
+        delete $2;
+        $2 = nullptr;
+        $$ = new NumberNode(manageToken(negative_number)); // Add NUMBER token
+        printf("Parsed negative number\n");
+    }
+
 identifier:
     IDENTIFIER {
-        // TODO: check if the token is initialized
-        // $$ = new IdentifierNode(manageInitializedToken($1));
         $$ = new IdentifierNode(manageToken($1));
         printf("Parsed identifier\n");
     }
     | IDENTIFIER T_LBRACKET IDENTIFIER T_RBRACKET {
-        $$ = new IdentifierNode();
-        // $$->addTokenChild($1);
-        // $$->addTokenChild($3);
+        Token* index0 = manageToken($1);
+        $$ = new TableNode(index0);
+        $$->addChild(new IdentifierNode(manageToken($3)));
         printf("Parsed array identifier (variable index)\n");
     }
-    | IDENTIFIER T_LBRACKET NUMBER T_RBRACKET {
-        $$ = new IdentifierNode();
-        // $$->addTokenChild($1);
-        // $$->addTokenChild($3);
+    | IDENTIFIER T_LBRACKET number T_RBRACKET {
+        Token* index0 = manageToken($1);
+        $$ = new TableNode(index0);
+        $$->addChild($3);
         printf("Parsed array identifier (number index)\n");
     }
     ;
 
 %%
 
-void rise_error(std::string s, Token* token) {
+void rise_error(std::string s, Token* token = nullptr) {
     std::ostringstream error;
-    error << "ERROR: " << s << ": \"" << token->getValue() << "\", on line: " << token->getLine();
+    if (token == nullptr) {
+        error << "ERROR: " << s;
+    } else {
+        error << "ERROR: " << s << ": \"" << token->getValue() << "\", on line: " << token->getLine();
+    }
     errors.push_back(error.str());
 }
 

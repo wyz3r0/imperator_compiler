@@ -17,23 +17,26 @@ enum class TokenType {
 
 class Token {
 public:
-    Token(TokenType type = TokenType::UNKNOWN, std::string value = "", unsigned long long line = 0, unsigned long long column = 0, long long address = -1)
-        : type(type), value(value), line(line), column(column), address(address) {}
+    Token(TokenType type = TokenType::UNKNOWN, std::string value = "", unsigned long long line = 0, unsigned long long column = 0, long long address = -1, bool reassignable = false)
+        : type(type), value(value), line(line), column(column), address(address), reassignable(reassignable) {}
 
     TokenType getType() const { return type; }
     std::string getValue() const { return value; }
     unsigned long long getLine() const { return line; }
     unsigned long long getColumn() const { return column; }
     long long getAddress() const { return address; }
+    bool getAssignibility() const { return reassignable; }
 
-    void setAddress(long long addr) { address = addr; }
+    void setAddress(long long addr) { this->address = addr; }
+    Token* setAssignability(bool reass) { this->reassignable = reass; return this; }
 
     void print() const {
         std::cout << "Token(Type: " << tokenTypeToString(type)
                   << ", Value: " << value
                   << ", Line: " << line
                   << ", Column: " << column
-                  << ", Address: " << address << ")\n";
+                  << ", Address: " << address
+                  << ", Reasignable: " << reassignable << std::boolalpha << ")\n";
     }
 
 private:
@@ -42,6 +45,7 @@ private:
     unsigned long long line;
     unsigned long long column;
     long long address;
+    bool reassignable;
 
     static std::string tokenTypeToString(TokenType type) {
         switch (type) {

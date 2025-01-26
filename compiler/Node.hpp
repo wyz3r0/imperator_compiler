@@ -11,6 +11,7 @@
 class Node {
 public:
     std::vector<Node*> children;
+    std::vector<Token*> tokens;
     Token* token;
     long long id;
 
@@ -18,12 +19,21 @@ public:
 
     virtual ~Node() {
         for (auto child : children) {
+            if (child->token) {
+                delete child->token;
+                child->token = nullptr;
+            }
             delete child;
+            child = nullptr;
         }
     }
 
     void addChild(Node* child) {
         children.push_back(child);
+    }
+
+    void addToken(Token* token) {
+        tokens.push_back(token);
     }
 
     virtual void print(int level = 0) const {
@@ -37,6 +47,17 @@ public:
         if (token) {
             token->print();
         }
+
+        if (!tokens.empty()) {
+            for (const auto& token : tokens) {
+                for (int i = 0; i < level; ++i) {
+                    std::cout << "  ";
+                }
+                std::cout << level << "-> ";
+                token->print();
+            }
+        }
+
         std::cout << std::endl;
 
         for (const auto& child : children) {
@@ -146,9 +167,20 @@ public:
         std::ostringstream assembly;
         // 0 - identifier, 1 - expression
 
-        assembly << children[1]->build();                                       // Put value into R4
-        assembly << "LOAD " << 4 << std::endl;
-        assembly << "STORE " << children[0]->token->getAddress() << std::endl;  // Store value into variable's addres
+        if (children[0]->getNodeType() == "IDENTIFIER") {
+            assembly << children[1]->build();                                       // Put value into R4
+            assembly << "LOAD " << 4 << std::endl;
+            assembly << "STORE " << children[0]->token->getAddress() << std::endl;  // Store value into variable's addres
+        }
+        else {
+            assembly << children[0]->children[0]->build();                          // Store index in R4
+            assembly << "SET " << children[0]->token->getAddress() << std::endl;    // Get address of index0
+            assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
+            assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
+            assembly << children[1]->build();                                       // Put value into R4
+            assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+            assembly << "STOREI " << 3 << std::endl;                                // Store value in table
+        }
 
         return assembly.str();
     }
@@ -201,9 +233,9 @@ public:
         std::ostringstream assembly;
         // 0 - condition, 1 - command
 
+        assembly << "*COND_WHILE_" << id << " ";                    // Label CONDITION of the while
         assembly << children[0]->build();                           // In R4 will be 1 if True or 0 if False
         assembly << "LOAD " << 4 << std::endl;
-        assembly << "*COND_WHILE_" << id << " ";                    // Label CONDITION of the while
         assembly << "JZERO " << "*END_WHILE_" << id << std::endl;   // If False jump to END label
         assembly << children[1]->build();                           // Insert COMMAND block
         assembly << "JUMP " << "*COND_WHILE_" << id << std::endl;   // Jump to the CONDITION of the while
@@ -225,13 +257,12 @@ public:
         assembly << children[0]->build();                           // Insert COMMAND block
         assembly << children[1]->build();                           // Insert CONDITION of the repeat
         assembly << "LOAD " << 4 << std::endl;
-        assembly << "JPOS " << "*REPEAT_START_" << id << std::endl; // If True jump to START label
+        assembly << "JZERO " << "*REPEAT_START_" << id << std::endl; // If True jump to START label
 
         return assembly.str();
     }
 };
 
-// ! something wrong when limits are variables
 class ForToCommandNode : public Node {
 public:
     explicit ForToCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
@@ -241,12 +272,13 @@ public:
         // 0 - lower_bound, 1 - upper_bound, 2 - commands
         // token - identifier
 
-        // TODO : store upper_bound in separate const
-        // TODO : check iterator reassignment inside
-        assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Load lower_bound
+        assembly << children[0]->build();                                       // Store lower_bound in R4
+        assembly << "LOAD " << 4 << std::endl;                                  // Load lower_bound
         assembly << "STORE " << token->getAddress() << std::endl;               // Set iterator to lower_bound
         assembly << "*FOR_BODY_" << id  << " ";                                 // Label BODY of for
-        assembly << "SUB " << children[1]->token->getAddress() << std::endl;    // Check whether iterator - upper_bound > 0
+        assembly << children[1]->build();                                       // Store upper_bound in R4
+        assembly << "LOAD " << token->  getAddress() << std::endl;              // Load iterator
+        assembly << "SUB " << 4 << std::endl;                                   // Check whether iterator - upper_bound > 0
         assembly << "JPOS " << "*FOR_END_" << id << std::endl;                  // If iterator - upper_bound > 0
         assembly << children[2]->build();                                       // Insert for body and label
         assembly << "LOAD " << token->getAddress() << std::endl;                // Load iterator
@@ -259,7 +291,6 @@ public:
     }
 };
 
-// ! something wrong when limits are variables
 class ForDownToCommandNode : public Node {
 public:
     explicit ForDownToCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
@@ -269,12 +300,13 @@ public:
         // 0 - upper_bound, 1 - lower_bound, 2 - commands
         // token - identifier
 
-        // TODO : store lower_bound in separate const
-        // TODO : check iterator reassignment inside
-        assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Load upper_bound
+        assembly << children[0]->build();                                       // Store upper_bound in R4
+        assembly << "LOAD " << 4 << std::endl;                                  // Load upper_bound
         assembly << "STORE " << token->getAddress() << std::endl;               // Set iterator to upper_bound
         assembly << "*FOR_BODY_" << id  << " ";                                 // Label BODY of for
-        assembly << "SUB " << children[1]->token->getAddress() << std::endl;    // Check whether iterator - lowe_bound < 0
+        assembly << children[1]->build();                                       // Store lower_bound in R4
+        assembly << "LOAD " << token->  getAddress() << std::endl;              // Load iterator
+        assembly << "SUB " << 4 << std::endl;                                   // Check whether iterator - lowe_bound < 0
         assembly << "JNEG " << "*FOR_END_" << id << std::endl;                  // If iterator - upper_bound < 0
         assembly << children[2]->build();                                       // Insert for body and label
         assembly << "LOAD " << token->getAddress() << std::endl;                // Load iterator
@@ -421,53 +453,108 @@ public:
         // token - operator
 
         if (token == nullptr) {
-            assembly << children[0]->build();       // Store value in R4
-            return assembly.str();                  // Return early cause there is no token.
+            assembly << children[0]->build();           // Store value in R4
+            return assembly.str();                      // Return early cause there is no token.
         }
 
         std::string operation = token->getValue();
 
         // a *operator* b
         if (operation == "+") {
-            assembly << children[1]->build();       // Get b into R4
+            assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "STORE " << 1 << std::endl; // Store b in R1
-            assembly << children[0]->build();       // Get a into R4
+            assembly << "STORE " << 1 << std::endl;     // Store b in R1
+            assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
             assembly << "ADD " << 1 << std::endl;
-            assembly << "STORE " << 4 << std::endl; // Store result in R4
+            assembly << "STORE " << 4 << std::endl;     // Store result in R4
         } else if (operation == "-") {
-            assembly << children[1]->build();       // Get b into R4
+            assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "STORE " << 1 << std::endl; // Store b in R1
-            assembly << children[0]->build();       // Get a into R4
+            assembly << "STORE " << 1 << std::endl;     // Store b in R1
+            assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
             assembly << "SUB " << 1 << std::endl;
-            assembly << "STORE " << 4 << std::endl; // Store result in R4
-        } else if (operation == "*") {              // TODO : implement MUL
-            assembly << children[1]->build();       // Get b into R4
+            assembly << "STORE " << 4 << std::endl;     // Store result in R4
+        } else if (operation == "*") {
+            assembly << "LOAD " << 5 << std::endl;      // Load 0
+            assembly << "STORE " << 3 << std::endl;     // Set sign to positive
+            assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "STORE " << 1 << std::endl; // Store b in R1
-            assembly << children[0]->build();       // Get a into R4
+            assembly << "STORE " << 2 << std::endl;     // Store b in R2
+            assembly << "JNEG " << 2 << std::endl;      // If b < 0 jump 2 lines forward
+            assembly << "JUMP " << 6 << std::endl;      // Jump 6 lines to a check
+            assembly << "SUB " << 2 << std::endl;       //! -b
+            assembly << "SUB " << 2 << std::endl;       // Make number positive
+            assembly << "STORE " << 2 << std::endl;     // Store positive b
+            assembly << "LOAD " << 6 << std::endl;      // Load 1
+            assembly << "STORE " << 3 << std::endl;     // Set sign to negative
+            assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "MUL " << 1 << std::endl;
-            assembly << "STORE " << 4 << std::endl; // Store result in R4
-        } else if (operation == "/") {              // TODO : implement DIV
-            assembly << children[1]->build();       // Get b into R4
+            assembly << "STORE " << 1 << std::endl;     // Store a in R1
+            assembly << "JNEG " << 2 << std::endl;      // If a < 0 jump 2 lines forward
+            assembly << "JUMP " << 11 << std::endl;     // Jump _ lines to a check
+            assembly << "SUB " << 1 << std::endl;       //! -a
+            assembly << "SUB " << 1 << std::endl;       // Make number positive
+            assembly << "STORE " << 1 << std::endl;     // Store positive a
+            assembly << "LOAD " << 3 << std::endl;      // Load sign
+            assembly << "JPOS " << 4 << std::endl;      // If sign = 1 jump 4 lines forward
+            assembly << "ADD " << 6 << std::endl;       // Set sign to negative
+            assembly << "STORE " << 3 << std::endl;     // Store negative sign
+            assembly << "JUMP " << 3 << std::endl;      // Jump 3 lines to the end of the sign check
+            assembly << "HALF" << std::endl;            // Set sign to positive
+            assembly << "STORE " << 3 << std::endl;     // Store positive sign
+            assembly << "LOAD " << 1 << std::endl;      // Load a
+            assembly << "SUB " << 2 << std::endl;       // Subtract b from a
+            assembly << "JPOS " << 7 << std::endl;      // If a > b skip swapping a and b
+            assembly << "LOAD " << 1 << std::endl;      // Load a
+            assembly << "STORE " << 4 << std::endl;     // Store a in b
+            assembly << "LOAD " << 2 << std::endl;      // Load b
+            assembly << "STORE " << 1 << std::endl;     // Store b in a
+            assembly << "LOAD " << 4 << std::endl;      // Load a
+            assembly << "STORE " << 2 << std::endl;     // Store b in a
+            assembly << "LOAD " << 5 << std::endl;      // Load 0
+            assembly << "STORE " << 4 << std::endl;     // Zero result
+            assembly << "LOAD " << 2 << std::endl;      //! a >= b
+            assembly << "HALF" << std::endl;
+            assembly << "ADD " << 0 << std::endl;
+            assembly << "SUB " << 2 << std::endl;       // Check if 2|b
+            assembly << "JZERO " << 4 << std::endl;     // If 2|b jump 4 lines forward
+            assembly << "LOAD " << 4 << std::endl;      // Load reminder sum
+            assembly << "ADD " << 1 << std::endl;       // Add a to the sum
+            assembly << "STORE " << 4 << std::endl;     // Store result in R4
+            assembly << "LOAD " << 2 << std::endl;      // Load halfed b
+            assembly << "HALF" << std::endl;            // Half b again
+            assembly << "JZERO " << 6 << std::endl;     // If b = 0 jump to the end
+            assembly << "STORE " << 2 << std::endl;     // Store halfed b
+            assembly << "LOAD " << 1 << std::endl;      // Load a
+            assembly << "ADD " << 1 << std::endl;       // Double a
+            assembly << "STORE " << 1 << std::endl;     // Store doubled a
+            assembly << "JUMP " << -15 << std::endl;    // Jump to the beginning
+            assembly << "LOAD " << 3 << std::endl;      // Load sign
+            assembly << "JZERO " << 5 << std::endl;     // If sign = 0 jump 4 lines to the end
+            assembly << "LOAD " << 4 << std::endl;      // Load result
+            assembly << "SUB " << 4 << std::endl;
+            assembly << "SUB " << 4 << std::endl;       // Negate result
+            assembly << "JUMP " << 2 << std::endl;      // Jump 2 lines to avoid unnecessary load
+            assembly << "LOAD " << 4 << std::endl;      // Load result
+            assembly << "STORE " << 4 << std::endl;     // Store result in R4
+        } else if (operation == "/") {                  // TODO : implement DIV
+            assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "STORE " << 1 << std::endl; // Store b in R1
-            assembly << children[0]->build();       // Get a into R4
+            assembly << "STORE " << 1 << std::endl;     // Store b in R1
+            assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
             assembly << "DIV " << 1 << std::endl;
-            assembly << "STORE " << 4 << std::endl; // Store result in R4
-        } else if (operation == "%") {              // TODO : implement MOD
-            assembly << children[1]->build();       // Get b into R4
+            assembly << "STORE " << 4 << std::endl;     // Store result in R4
+        } else if (operation == "%") {                  // TODO : implement MOD
+            assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "STORE " << 1 << std::endl; // Store b in R1
-            assembly << children[0]->build();       // Get a into R4
+            assembly << "STORE " << 1 << std::endl;     // Store b in R1
+            assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
             assembly << "MOD " << 1 << std::endl;
-            assembly << "STORE " << 4 << std::endl; // Store result in R4
+            assembly << "STORE " << 4 << std::endl;     // Store result in R4
         }
 
         return assembly.str();
@@ -569,15 +656,21 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
-        if (token) {
-            // get constant number
-            assembly << "LOAD " << token->getAddress() << std::endl;
-            assembly << "STORE " << 4 << std::endl;
-        }
-        else {
-            // get address of the variable
-            assembly << children[0]->build();
-        }
+        assembly << children[0]->build();
+
+        return assembly.str();
+    }
+};
+
+class NumberNode : public Node {
+public:
+    explicit NumberNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "NUMBER"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+
+        assembly << "LOAD " << token->getAddress() << std::endl;
+        assembly << "STORE " << 4 << std::endl;
 
         return assembly.str();
     }
@@ -597,5 +690,21 @@ public:
     }
 };
 
+class TableNode : public Node {
+public:
+    explicit TableNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "TABEL"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+
+        assembly << children[0]->build();                           // Store index in R4
+        assembly << "SET " << token->getAddress() << std::endl;     // Get address of index0
+        assembly << "ADD " << 4 << std::endl;                       // Calculate absolute address
+        assembly << "LOADI " << 0 << std::endl;                     // Load value from table
+        assembly << "STORE " << 4 << std::endl;                     // Store value in R4
+
+        return assembly.str();
+    }
+};
 
 #endif

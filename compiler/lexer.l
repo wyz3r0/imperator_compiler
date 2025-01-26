@@ -11,13 +11,14 @@
 #include <cstdlib>
 
 extern YYSTYPE yylval;
+extern void rise_error(std::string s, Token* token = nullptr);
 #define YYSTYPE *Token
 
 %}
 
 %%
 
-^#(.|\\\n)*\n              { /* Ignore comments */; }
+.*#.*                      { /* Ignore comments */; }
 
 "PROGRAM"                  { yylval.token = new Token(TokenType::PROGRAM, "PROGRAM", yylineno, 0); return PROGRAM; }
 "PROCEDURE"                { yylval.token = new Token(TokenType::PROCEDURE, "PROCEDURE", yylineno, 0); return PROCEDURE; }
@@ -64,13 +65,13 @@ extern YYSTYPE yylval;
 "["                        { yylval.token = new Token(TokenType::T_LBRACKET, "[", yylineno, 0); return T_LBRACKET; }
 "]"                        { yylval.token = new Token(TokenType::T_RBRACKET, "]", yylineno, 0); return T_RBRACKET; }
 
-[0-9]+                   { yylval.token = new Token(TokenType::NUMBER, yytext, yylineno, 0); return NUMBER; }
+[0-9]+                     { yylval.token = new Token(TokenType::NUMBER, yytext, yylineno, 0); return NUMBER; }
 
 [_a-z]+                    { yylval.token = new Token(TokenType::IDENTIFIER, yytext, yylineno, 0); return IDENTIFIER; }
 
 [ \t\r\n]+                 { /* Ignore whitespace */; }
 
-.                          { std::cerr << "Unexpected character: " << yytext << " at line " << yylineno << std::endl; }
+.                          { rise_error("Unrecognized token: " + *yytext); }
 
 
 %%
