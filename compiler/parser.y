@@ -110,7 +110,7 @@ bool saveToFile(const std::string& content) {
 %left  T_MUL T_DIV T_MOD
 %left  T_LPAREN T_LBRACKET
 
-%type <node> program_all procedures main commands command proc_head proc_call declarations args_decl args expression condition value identifier number
+%type <node> procedures main commands command proc_head proc_call declarations args_decl args expression condition value identifier number
 
 %start program_all
 
@@ -123,11 +123,11 @@ program_all:
         tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6, false));
     }
     procedures main {
-        $$ = new ProgramAllNode();
-        $$->addChild($2);  // Add procedures node
-        $$->addChild($3);  // Add main node
+        Node* AST = new ProgramAllNode();
+        AST->addChild($2);  // Add procedures node
+        AST->addChild($3);  // Add main node
         printf("Parsed program_all\n");
-        $$->print();
+        AST->print();
         for (auto token : tokens) {
             token->print();
         }
@@ -140,11 +140,13 @@ program_all:
         }
 
         // Build assembly.
-        std::string assembly = $$->build(&tokens);
+        std::string assembly = AST->build(&tokens);
         std::cout << "First pass assembly:" << std::endl << assembly << std::endl;
 
         assembly = calculate_jumps(assembly);
         std::cout << "Assembly with calculated jumps:" << std::endl << assembly << std::endl;
+
+        delete AST;
 
         if (!saveToFile(assembly)) {
             std::cout << "FATAL COMPILATION ERROR" << std::endl;
