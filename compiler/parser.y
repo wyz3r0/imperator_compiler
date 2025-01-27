@@ -29,17 +29,20 @@ std::vector<std::string> errors;
         R0 - ACC
         R1 - temp var 1
         R2 - temp var 2
-        R3 - temp var 3 (can be return in some cases)
+        R3 - temp var 3
         R4 - return val
         R5 - 0 (false)
         R6 - 1 (true)
+        R7 - temp var 4
+        R8 - temp var 5
 */
 
 std::vector<Token*> tokens;
 
-long long var_counter = 7;
+long long var_counter = 9;
 long long condition_counter = 0;
 long long command_counter = 0;
+long long expression_counter = 0;
 
 
 Token* manageToken(Token* newToken) {
@@ -374,13 +377,13 @@ expression:
         printf("Parsed expression (multiplication)\n");
     }
     | value T_DIV value {
-        $$ = new ExpressionNode($2);
+        $$ = new ExpressionNode($2, expression_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (division)\n");
     }
     | value T_MOD value {
-        $$ = new ExpressionNode($2);
+        $$ = new ExpressionNode($2, expression_counter++);
         $$->addChild($1);  // Add first value
         $$->addChild($3);  // Add second value
         printf("Parsed expression (modulus)\n");
