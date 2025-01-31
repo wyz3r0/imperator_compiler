@@ -107,7 +107,89 @@ public:
     std::string getNodeType() const override { return "PROCEDURES"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
-        // 0 - procedures, 1 - main
+        // 0 - procedures, 1 -proc_head, 2 - commands, 3 - declarations (optional)
+        // token
+
+        // Build current and previous procedures.
+        for (auto node : children) {
+            assembly << node->build();
+        }
+
+        return assembly.str();
+    }
+};
+
+class ProcHeadNode : public Node {
+public:
+    explicit ProcHeadNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "PROC_HEAD"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+        // 0 - ard_declaration
+        // token - procedure_identifier
+
+        for (auto node : children) {
+            assembly << node->build();
+        }
+
+        return assembly.str();
+    }
+};
+
+class ProcCallNode : public Node {
+public:
+    explicit ProcCallNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "PROC_CALL"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+        // 0 - args
+        // token - procedure_identifier
+
+        for (auto node : children) {
+            assembly << node->build();
+        }
+
+        return assembly.str();
+    }
+};
+
+class ArgsDeclNode : public Node {
+public:
+    explicit ArgsDeclNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "ARGS_DECL"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+
+        for (auto node : children) {
+            assembly << node->build();
+        }
+
+        return assembly.str();
+    }
+};
+
+class ArgsNode : public Node {
+public:
+    explicit ArgsNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "ARGS"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+
+        for (auto node : children) {
+            assembly << node->build();
+        }
+
+        return assembly.str();
+    }
+};
+
+class ProcCallCommandNode : public Node {
+public:
+    explicit ProcCallCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "PROC_CALL_COMMAND"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+        // 0 - proc_call
 
         for (auto node : children) {
             assembly << node->build();
@@ -162,19 +244,39 @@ public:
         std::ostringstream assembly;
         // 0 - identifier, 1 - expression
 
-        if (children[0]->getNodeType() == "IDENTIFIER") {
-            assembly << children[1]->build();                                       // Put value into R4
-            assembly << "LOAD " << 4 << std::endl;
-            assembly << "STORE " << children[0]->token->getAddress() << std::endl;  // Store value into variable's addres
+        if (children[0]->token->getFunction() == TokenFunction::ARG){
+            if (children[0]->getNodeType() == "IDENTIFIER") {
+                assembly << children[1]->build();                                       // Put value into R4
+                assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Load address from arg's address
+                assembly << "STORE " << 3 << std::endl;                                 // Store address in R3
+                assembly << "LOAD " << 4 << std::endl;
+                assembly << "STOREI " << 3 << std::endl;                                // Store value into variable's addres
+            }
+            else {
+                assembly << children[0]->children[0]->build();                          // Store index in R4
+                assembly << "LOAD " << children[0]->token->getAddress() << std::endl;    // Get address of index0
+                assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
+                assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
+                assembly << children[1]->build();                                       // Put value into R4
+                assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+                assembly << "STOREI " << 3 << std::endl;                                // Store value in table
+            }
         }
         else {
-            assembly << children[0]->children[0]->build();                          // Store index in R4
-            assembly << "SET " << children[0]->token->getAddress() << std::endl;    // Get address of index0
-            assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
-            assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
-            assembly << children[1]->build();                                       // Put value into R4
-            assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
-            assembly << "STOREI " << 3 << std::endl;                                // Store value in table
+            if (children[0]->getNodeType() == "IDENTIFIER") {
+                assembly << children[1]->build();                                       // Put value into R4
+                assembly << "LOAD " << 4 << std::endl;
+                assembly << "STORE " << children[0]->token->getAddress() << std::endl;  // Store value into variable's addres
+            }
+            else {
+                assembly << children[0]->children[0]->build();                          // Store index in R4
+                assembly << "SET " << children[0]->token->getAddress() << std::endl;    // Get address of index0
+                assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
+                assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
+                assembly << children[1]->build();                                       // Put value into R4
+                assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+                assembly << "STOREI " << 3 << std::endl;                                // Store value in table
+            }
         }
 
         return assembly.str();
@@ -314,22 +416,6 @@ public:
     }
 };
 
-class ProcCallCommandNode : public Node {
-public:
-    explicit ProcCallCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "PROC_CALL_COMMAND"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-        // 0 - proc_call
-
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        return assembly.str();
-    }
-};
-
 class ReadCommandNode : public Node {
 public:
     explicit ReadCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
@@ -359,74 +445,10 @@ public:
     }
 };
 
-class ProcHeadNode : public Node {
-public:
-    explicit ProcHeadNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "PROC_HEAD"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-        // 0 - ard_declaration
-        // token - procedure_identifier
-
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        return assembly.str();
-    }
-};
-
-class ProcCallNode : public Node {
-public:
-    explicit ProcCallNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "PROC_CALL"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-        // 0 - args
-        // token - procedure_identifier
-
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        return assembly.str();
-    }
-};
-
 class DeclarationsNode : public Node {
 public:
     explicit DeclarationsNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
     std::string getNodeType() const override { return "DECLARATIONS"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        return assembly.str();
-    }
-};
-
-class ArgsDeclNode : public Node {
-public:
-    explicit ArgsDeclNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "ARGS_DECL"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        return assembly.str();
-    }
-};
-
-class ArgsNode : public Node {
-public:
-    explicit ArgsNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "ARGS"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
@@ -814,8 +836,14 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
-        assembly << "LOAD " << token->getAddress() << std::endl;
-        assembly << "STORE " << 4 << std::endl;
+        if (token->getFunction() == TokenFunction::ARG) {
+            assembly << "LOADI " << token->getAddress() << std::endl;
+            assembly << "STORE " << 4 << std::endl;
+        } else {
+            assembly << "LOAD " << token->getAddress() << std::endl;
+            assembly << "STORE " << 4 << std::endl;
+        }
+
 
         return assembly.str();
     }
@@ -828,8 +856,13 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
-        assembly << "LOAD " << token->getAddress() << std::endl;
-        assembly << "STORE " << 4 << std::endl;
+        if (token->getFunction() == TokenFunction::ARG) {
+            assembly << "LOADI " << token->getAddress() << std::endl;
+            assembly << "STORE " << 4 << std::endl;
+        } else {
+            assembly << "LOAD " << token->getAddress() << std::endl;
+            assembly << "STORE " << 4 << std::endl;
+        }
 
         return assembly.str();
     }
@@ -842,11 +875,19 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
-        assembly << children[0]->build();                           // Store index in R4
-        assembly << "SET " << token->getAddress() << std::endl;     // Get address of index0
-        assembly << "ADD " << 4 << std::endl;                       // Calculate absolute address
-        assembly << "LOADI " << 0 << std::endl;                     // Load value from table
-        assembly << "STORE " << 4 << std::endl;                     // Store value in R4
+        if (token->getFunction() == TokenFunction::ARG) {
+            assembly << children[0]->build();                           // Store index in R4
+            assembly << "LOAD " << token->getAddress() << std::endl;    // Get address of index0
+            assembly << "ADD " << 4 << std::endl;                       // Calculate absolute address
+            assembly << "LOADI " << 0 << std::endl;                     // Load value from table
+            assembly << "STORE " << 4 << std::endl;                     // Store value in R4
+        } else {
+            assembly << children[0]->build();                           // Store index in R4
+            assembly << "SET " << token->getAddress() << std::endl;     // Get address of index0
+            assembly << "ADD " << 4 << std::endl;                       // Calculate absolute address
+            assembly << "LOADI " << 0 << std::endl;                     // Load value from table
+            assembly << "STORE " << 4 << std::endl;                     // Store value in R4
+        }
 
         return assembly.str();
     }

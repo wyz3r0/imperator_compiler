@@ -15,10 +15,16 @@ enum class TokenType {
     T_SEMICOLON, T_COLON, T_TABLE, T_LPAREN, T_RPAREN, T_LBRACKET, T_RBRACKET
 };
 
+enum class TokenFunction {
+    DEFAULT,    // Out of procedure value
+    ARG,        // Procedure argument
+    PROC        // Return address
+};
+
 class Token {
 public:
-    Token(TokenType type = TokenType::UNKNOWN, std::string value = "", unsigned long long line = 0, unsigned long long column = 0, long long address = -1, bool reassignable = false)
-        : type(type), value(value), line(line), column(column), address(address), reassignable(reassignable) {}
+    Token(TokenType type = TokenType::UNKNOWN, std::string value = "", unsigned long long line = 0, unsigned long long column = 0, long long address = -1, bool reassignable = false, TokenFunction function = TokenFunction::DEFAULT)
+        : type(type), value(value), line(line), column(column), address(address), reassignable(reassignable), function(function) {}
 
     TokenType getType() const { return type; }
     std::string getValue() const { return value; }
@@ -26,8 +32,11 @@ public:
     unsigned long long getColumn() const { return column; }
     long long getAddress() const { return address; }
     bool getAssignibility() const { return reassignable; }
+    TokenFunction getFunction() const { return function; }
 
     void setAddress(long long addr) { this->address = addr; }
+    void setValue(std::string value) { this->value = value; }
+    Token* setFunction(TokenFunction function) { this->function = function; return this; }
     Token* setAssignability(bool reass) { this->reassignable = reass; return this; }
 
     void print() const {
@@ -36,7 +45,8 @@ public:
                   << ", Line: " << line
                   << ", Column: " << column
                   << ", Address: " << address
-                  << ", Reasignable: " << reassignable << std::boolalpha << ")\n";
+                  << ", Reasignable: " << reassignable << std::boolalpha
+                  << ", Function: " << tokenFunctionToString(function) << ")\n";
     }
 
 private:
@@ -46,6 +56,7 @@ private:
     unsigned long long column;
     long long address;
     bool reassignable;
+    TokenFunction function;
 
     static std::string tokenTypeToString(TokenType type) {
         switch (type) {
@@ -95,6 +106,14 @@ private:
             case TokenType::T_LBRACKET: return "LBRACKET";
             case TokenType::T_RBRACKET: return "RBRACKET";
             default: return "UNKNOWN";
+        }
+    }
+
+        static std::string tokenFunctionToString(TokenFunction function) {
+        switch (function) {
+            case TokenFunction::PROC: return "PROCEDURE";
+            case TokenFunction::ARG: return "ARGUMENT";
+            default: return "DEFAULT";
         }
     }
 };
