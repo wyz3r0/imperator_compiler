@@ -19,12 +19,19 @@ std::string calculate_jumps(const std::string& assembly) {
     int lineIndex = 0;
     while (std::getline(input, line)) {
         std::smatch match;
-        std::regex labelRegex(R"(^\*(\w+) )"); // Match labels starting with '*'
+        std::regex labelRegex(R"((\*\w+ )+)"); // Match multiple labels starting with '*'
 
         if (std::regex_search(line, match, labelRegex)) {
-            labelPositions[match[1]] = lineIndex;
+            std::string labels = match[0].str(); // Use match[0] to get the full matched string
+            std::istringstream labelStream(labels);
+            std::string label;
 
-            // Remove the label from the line
+            // Store each label's position
+            while (labelStream >> label) {
+                labelPositions[label.substr(1)] = lineIndex; // Remove '*' from label
+            }
+
+            // Remove the labels from the line
             line = std::regex_replace(line, labelRegex, "");
 
             // Add the modified line if it contains other instructions
@@ -41,7 +48,8 @@ std::string calculate_jumps(const std::string& assembly) {
     // Second pass: Replace label references with calculated relative jumps
     for (std::string& instruction : lines) {
         std::smatch match;
-        std::regex jumpRegex(R"(\b(JUMP|JPOS|JZERO|JNEG)\s+\*(\w+))"); // Match JUMP commands with labels
+        std::regex jumpRegex(R"(\b(JUMP|JPOS|JZERO|JNEG)\s+\*(\w+))");  // Match JUMP commands with labels
+        std::regex setRegex(R"(\b(SET)\s+\&(\d+))");                    // Match SET commands with &number
 
         while (std::regex_search(instruction, match, jumpRegex)) {
             std::string label = match[2];
@@ -60,6 +68,19 @@ std::string calculate_jumps(const std::string& assembly) {
             } else {
                 throw std::runtime_error("Undefined label: " + label);
             }
+        }
+
+        while (std::regex_search(instruction, match, setRegex)) {
+            std::string numberStr = match[2];
+            int number = std::stoi(numberStr);
+            int currentLine = &instruction - &lines[0];
+            int calculatedValue = currentLine + number;
+
+            instruction = std::regex_replace(
+                instruction,
+                setRegex,
+                "SET " + std::to_string(calculatedValue)
+            );
         }
     }
 

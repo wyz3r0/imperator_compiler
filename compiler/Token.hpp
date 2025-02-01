@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <variant>
+#include <vector>
 
 // Enum typów tokenów
 enum class TokenType {
@@ -17,7 +18,9 @@ enum class TokenType {
 
 enum class TokenFunction {
     DEFAULT,    // Out of procedure value
+    TABLE,      // Default table variable
     ARG,        // Procedure argument
+    T_ARG,      // Procedure argument that is a table
     PROC        // Return address
 };
 
@@ -33,11 +36,14 @@ public:
     long long getAddress() const { return address; }
     bool getAssignibility() const { return reassignable; }
     TokenFunction getFunction() const { return function; }
+    std::vector<Token*> getArgs() const { return args; }
 
     void setAddress(long long addr) { this->address = addr; }
     void setValue(std::string value) { this->value = value; }
     Token* setFunction(TokenFunction function) { this->function = function; return this; }
     Token* setAssignability(bool reass) { this->reassignable = reass; return this; }
+    void addArg(Token* arg) { this->args.push_back(arg); }
+    void setArgs(const std::vector<Token*>& args) { this->args = args; }
 
     void print() const {
         std::cout << "Token(Type: " << tokenTypeToString(type)
@@ -57,6 +63,7 @@ private:
     long long address;
     bool reassignable;
     TokenFunction function;
+    std::vector<Token*> args;
 
     static std::string tokenTypeToString(TokenType type) {
         switch (type) {
@@ -113,6 +120,8 @@ private:
         switch (function) {
             case TokenFunction::PROC: return "PROCEDURE";
             case TokenFunction::ARG: return "ARGUMENT";
+            case TokenFunction::T_ARG: return "TABLE_ARGUMENT";
+            case TokenFunction::TABLE: return "TABLE";
             default: return "DEFAULT";
         }
     }

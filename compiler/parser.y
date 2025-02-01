@@ -13,16 +13,13 @@
 #include "Node.hpp"
 #include "postprocessing.hpp"
 #include "parser.tab.h"
+#include "ErrorHandler.hpp"
 
 extern const std::string parsedFileName;
 extern FILE *yyin;
 extern int yylex();
 extern int yyparse();
 int yyerror(std::string s);
-
-void rise_error(std::string s, Token* token);
-
-std::vector<std::string> errors;
 
 /*
     REGISTERS:
@@ -47,7 +44,7 @@ long long expression_counter = 0;
 
 
 Token* manageToken(Token* newToken) {
-    if (proc_counter != -1 && newToken->getFunction() != TokenFunction::PROC) {
+    if (proc_counter != -1 && newToken->getFunction() != TokenFunction::PROC && newToken->getType() == TokenType::IDENTIFIER) {
         newToken->setValue(std::to_string(proc_counter) + "-" + newToken->getValue());
     }
 
@@ -67,7 +64,7 @@ Token* manageToken(Token* newToken) {
 
 Token* manageTabel(Token* identifier, Token* lower_bound, Token* upper_bound) {
     if (std::stoll(lower_bound->getValue()) > std::stoll(upper_bound->getValue())) {
-        rise_error("Lower bound is greater than upper bound", identifier);
+        LOG_ERROR("Lower bound is greater than upper bound", identifier);
     }
 
     identifier->setAddress(var_counter-std::stoll(lower_bound->getValue()));    // Set absolute address of 0th index
@@ -95,6 +92,12 @@ bool saveToFile(const std::string& content) {
     }
 }
 
+void vibecheck(){
+    if (!ErrorHandler::getInstance().getErrors().empty()) {
+        ErrorHandler::getInstance().printErrors();
+        exit(1);
+    }
+}
 
 %}
 
@@ -130,27 +133,27 @@ program_all:
         tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6, false));
     }
     procedures { proc_counter = -1; } main {
+        vibecheck();
+
         Node* AST = new ProgramAllNode();
         AST->addChild($2);  // Add procedures node
         AST->addChild($4);  // Add main node
         printf("Parsed program_all\n");
+
+        vibecheck();
+
         AST->print();
         for (auto token : tokens) {
             token->print();
         }
 
-        if (!errors.empty()) {
-            for (std::string error : errors){
-                std::cout << error << std::endl;
-            }
-            return 1;
-        }
-
         // Build assembly.
         std::string assembly = AST->build(&tokens);
+        vibecheck();
         std::cout << "First pass assembly:" << std::endl << assembly << std::endl;
 
         assembly = calculate_jumps(assembly);
+        vibecheck();
         std::cout << "Assembly with calculated jumps:" << std::endl << assembly << std::endl;
 
         delete AST;
@@ -161,9 +164,10 @@ program_all:
     }
     ;
 
+/* TODO : seg fault for over 2 procedures */
 procedures:
     procedures PROCEDURE proc_head IS declarations T_BEGIN commands END {
-        $$ = new ProceduresNode($2, proc_counter);
+        $$ = new ProceduresNode();
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($7);  // Add commands
@@ -172,7 +176,7 @@ procedures:
         printf("Parsed procedures with declarations\n");
     }
     | procedures PROCEDURE proc_head IS T_BEGIN commands END {
-        $$ = new ProceduresNode($2, proc_counter);
+        $$ = new ProceduresNode();
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($6);  // Add commands
@@ -195,7 +199,7 @@ proc_head:
 
 proc_call:
     IDENTIFIER T_LPAREN args T_RPAREN {
-        $$ = new ProcHeadNode(manageToken($1)); // Add IDENTIFIER token
+        $$ = new ProcCallNode(manageToken($1->setFunction(TokenFunction::PROC))); // Add IDENTIFIER token
         $$->addChild($3);  // Add arguments
         printf("Parsed procedure call\n");
     }
@@ -208,7 +212,7 @@ args_decl:
         printf("Parsed arguments declaration (multiple)\n");
     }
     | args_decl T_COMMA T_TABLE IDENTIFIER {
-        $$ = new ArgsDeclNode(manageToken($4->setFunction(TokenFunction::ARG)));  // Add IDENTIFIER token
+        $$ = new ArgsDeclNode(manageToken($4->setFunction(TokenFunction::T_ARG)));  // Add IDENTIFIER token
         $$->addChild($1);  // Add previous argument declaration
         printf("Parsed arguments declaration with table\n");
     }
@@ -217,19 +221,19 @@ args_decl:
         printf("Parsed single argument declaration\n");
     }
     | T_TABLE IDENTIFIER {
-        $$ = new ArgsDeclNode(manageToken($2->setFunction(TokenFunction::ARG))); // Add IDENTIFIER token
+        $$ = new ArgsDeclNode(manageToken($2->setFunction(TokenFunction::T_ARG))); // Add IDENTIFIER token
         printf("Parsed single table argument declaration\n");
     }
     ;
 
 args:
     args T_COMMA IDENTIFIER {
-        $$ = new ArgsNode($3); // Add IDENTIFIER token
+        $$ = new ArgsNode(manageToken($3)); // Add IDENTIFIER token
         $$->addChild($1);  // Add previous arguments
         printf("Parsed arguments (multiple)\n");
     }
     | IDENTIFIER {
-        $$ = new ArgsNode($1); // Add IDENTIFIER token
+        $$ = new ArgsNode(manageToken($1)); // Add IDENTIFIER token
         printf("Parsed single argument\n");
     }
     ;
@@ -342,7 +346,7 @@ declarations:
     | declarations T_COMMA IDENTIFIER T_LBRACKET number T_COLON number T_RBRACKET {
         Token* lower_bound = $5->token;
         Token* upper_bound = $7->token;
-        $$ = new DeclarationsNode(manageTabel($3, lower_bound, upper_bound));
+        $$ = new DeclarationsNode(manageTabel($3->setFunction(TokenFunction::TABLE), lower_bound, upper_bound));
         $$->addChild($1);  // Add previous declarations
 
         printf("Parsed declarations with array\n");
@@ -355,7 +359,7 @@ declarations:
     | IDENTIFIER T_LBRACKET number T_COLON number T_RBRACKET {
         Token* lower_bound = $3->token;
         Token* upper_bound = $5->token;
-        $$ = new DeclarationsNode(manageTabel($1, lower_bound, upper_bound));
+        $$ = new DeclarationsNode(manageTabel($1->setFunction(TokenFunction::TABLE), lower_bound, upper_bound));
 
         printf("Parsed single array declaration\n");
     }
@@ -489,17 +493,8 @@ identifier:
 
 %%
 
-void rise_error(std::string s, Token* token = nullptr) {
-    std::ostringstream error;
-    if (token == nullptr) {
-        error << "ERROR: " << s;
-    } else {
-        error << "ERROR: " << s << ": \"" << token->getValue() << "\", on line: " << token->getLine();
-    }
-    errors.push_back(error.str());
-}
-
 int yyerror(std::string s) {
-    errors.push_back(s);
+    LOG_ERROR(s, nullptr);
+    vibecheck();
     return 1;
 }

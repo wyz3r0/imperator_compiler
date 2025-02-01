@@ -9,9 +9,10 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+#include <format>
+#include "ErrorHandler.hpp"
 
 extern YYSTYPE yylval;
-extern void rise_error(std::string s, Token* token = nullptr);
 #define YYSTYPE *Token
 
 %}
@@ -71,7 +72,7 @@ extern void rise_error(std::string s, Token* token = nullptr);
 
 [ \t\r\n]+                 { /* Ignore whitespace */; }
 
-.                          { rise_error("Unrecognized token: " + *yytext); }
+.                          { LOG_ERROR(std::format("Unrecognized token: \'{}\' on line {}", yytext, yylineno), nullptr); }
 
 
 %%

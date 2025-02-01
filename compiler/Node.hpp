@@ -6,7 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include "Token.hpp"
-
+#include "ErrorHandler.hpp"
 
 class Node {
 public:
@@ -90,12 +90,11 @@ public:
             }
         }
 
-        // Build procedures and main.
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        assembly << "HALT" << std::endl;    // Finish the program.
+        assembly << "JUMP " << "*MAIN" << std::endl;    // Skip procedures before main.
+        assembly << children[0]->build();               // Insert procedures.
+        assembly << "*MAIN ";                           // Label Main.
+        assembly << children[1]->build();               // Insert Main.
+        assembly << "HALT" << std::endl;                // Finish the program.
 
         return assembly.str();
     }
@@ -107,13 +106,23 @@ public:
     std::string getNodeType() const override { return "PROCEDURES"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
-        // 0 - procedures, 1 -proc_head, 2 - commands, 3 - declarations (optional)
-        // token
+        // 0 - procedures, 1 - proc_head, 2 - commands, 3 - declarations (optional)
 
-        // Build current and previous procedures.
-        for (auto node : children) {
-            assembly << node->build();
+        if (children.empty()){
+            return assembly.str();
         }
+
+        if (children[0]){
+            assembly << children[0]->build();
+        }
+
+        if (children[3]){
+            children[3]->build();
+        }
+        assembly << "*PROC_" + children[1]->token->getValue() << " ";           // Label procedure
+        children[1]->build();                                                   // Build proc_head
+        assembly << children[2]->build();                                       // Build procedure
+        assembly << "RTRN " << children[1]->token->getAddress() << std::endl;   // Return to the caller
 
         return assembly.str();
     }
@@ -127,6 +136,43 @@ public:
         std::ostringstream assembly;
         // 0 - ard_declaration
         // token - procedure_identifier
+
+        std::vector<Token*> *args = new std::vector<Token*>();
+
+        for (auto node : children) {
+            assembly << node->build(args);
+        }
+
+        token->setArgs(*args);
+
+        return assembly.str();
+    }
+};
+
+class ArgsDeclNode : public Node {
+public:
+    explicit ArgsDeclNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "ARGS_DECL"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+
+        tokens->push_back(token);
+
+        for (auto node : children) {
+            assembly << node->build(tokens);
+        }
+
+        return assembly.str();
+    }
+};
+
+class ProcCallCommandNode : public Node {
+public:
+    explicit ProcCallCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
+    std::string getNodeType() const override { return "PROC_CALL_COMMAND"; }
+    std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        std::ostringstream assembly;
+        // 0 - proc_call
 
         for (auto node : children) {
             assembly << node->build();
@@ -145,24 +191,38 @@ public:
         // 0 - args
         // token - procedure_identifier
 
-        for (auto node : children) {
-            assembly << node->build();
+        std::vector<Token*> *passed_args = new std::vector<Token*>();
+        std::vector<Token*> *args = new std::vector<Token*>(token->getArgs());
+
+        children[0]->build(passed_args);    // Gather passed arguments
+
+        if (args->size() != passed_args->size()){
+            if (args->size() > passed_args->size()){
+                LOG_ERROR("Not enough arguments passed.", token);
+            } else {
+                LOG_ERROR("Too many arguments passed.", token);
+            }
+            return assembly.str();
         }
 
-        return assembly.str();
-    }
-};
+        for (long long i = 0; i < args->size(); i++) {
+            if (!((args->at(i)->getFunction() == TokenFunction::T_ARG && passed_args->at(i)->getFunction() == TokenFunction::TABLE)
+                || (args->at(i)->getFunction() == TokenFunction::T_ARG && passed_args->at(i)->getFunction() == TokenFunction::T_ARG)
+                || (args->at(i)->getFunction() == TokenFunction::ARG && passed_args->at(i)->getFunction() == TokenFunction::DEFAULT)
+                || (args->at(i)->getFunction() == TokenFunction::ARG && passed_args->at(i)->getFunction() == TokenFunction::ARG))) {
+                LOG_ERROR("Missmatched argument types.", token);
+            }
 
-class ArgsDeclNode : public Node {
-public:
-    explicit ArgsDeclNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "ARGS_DECL"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-
-        for (auto node : children) {
-            assembly << node->build();
+            assembly << "SET " << passed_args->at(i)->getAddress() << std::endl;
+            assembly << "STORE " << args->at(i)->getAddress() << std::endl;
         }
+
+        assembly << "SET " << "&3" << std::endl;                            // Set return address 3 lines forward
+        assembly << "STORE " << token->getAddress() << std::endl;           // Store return address in procedure's variable
+        assembly << "JUMP " << "*PROC_" + token->getValue() << std::endl;   // Jump to the procedure
+
+        delete passed_args;
+        delete args;
 
         return assembly.str();
     }
@@ -173,26 +233,14 @@ public:
     explicit ArgsNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
     std::string getNodeType() const override { return "ARGS"; }
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
+        // 0 - following args
+        // token - this argument
         std::ostringstream assembly;
 
-        for (auto node : children) {
-            assembly << node->build();
-        }
-
-        return assembly.str();
-    }
-};
-
-class ProcCallCommandNode : public Node {
-public:
-    explicit ProcCallCommandNode(Token* token = nullptr, long long id = -1) : Node(token, id) {}
-    std::string getNodeType() const override { return "PROC_CALL_COMMAND"; }
-    std::string build(std::vector<Token*> *tokens = nullptr) const override {
-        std::ostringstream assembly;
-        // 0 - proc_call
+        tokens->push_back(token);
 
         for (auto node : children) {
-            assembly << node->build();
+            assembly << node->build(tokens);
         }
 
         return assembly.str();
@@ -875,7 +923,7 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
 
-        if (token->getFunction() == TokenFunction::ARG) {
+        if (token->getFunction() == TokenFunction::T_ARG) {
             assembly << children[0]->build();                           // Store index in R4
             assembly << "LOAD " << token->getAddress() << std::endl;    // Get address of index0
             assembly << "ADD " << 4 << std::endl;                       // Calculate absolute address
