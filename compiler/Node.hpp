@@ -220,8 +220,14 @@ public:
                 LOG_ERROR("Missmatched argument types.", token);
             }
 
-            assembly << "SET " << passed_args->at(i)->getAddress() << std::endl;
-            assembly << "STORE " << args->at(i)->getAddress() << std::endl;
+            if (passed_args->at(i)->getFunction() == TokenFunction::ARG || passed_args->at(i)->getFunction() == TokenFunction::T_ARG) {
+                assembly << "LOAD " << passed_args->at(i)->getAddress() << std::endl;
+                assembly << "STORE " << args->at(i)->getAddress() << std::endl;
+            }
+            else {
+                assembly << "SET " << passed_args->at(i)->getAddress() << std::endl;
+                assembly << "STORE " << args->at(i)->getAddress() << std::endl;
+            }
         }
 
         assembly << "SET " << "&3" << std::endl;                            // Set return address 3 lines forward

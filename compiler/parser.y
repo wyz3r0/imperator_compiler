@@ -163,7 +163,6 @@ program_all:
     }
     ;
 
-/* TODO : seg fault for over 2 procedures */
 procedures:
     procedures PROCEDURE proc_head IS declarations T_BEGIN commands END {
         $$ = new ProceduresNode($2, proc_counter);
