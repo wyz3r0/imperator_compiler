@@ -108,21 +108,28 @@ public:
         std::ostringstream assembly;
         // 0 - procedures, 1 - proc_head, 2 - commands, 3 - declarations (optional)
 
-        if (children.empty()){
+        if (children.empty()) {
             return assembly.str();
         }
 
-        if (children[0]){
+        if (children[0]->getNodeType() == "PROCEDURES") {
             assembly << children[0]->build();
         }
 
-        if (children[3]){
-            children[3]->build();
+        // Ignore because sometimes children[3] somehow gets object that is not in children
+        try {
+            children.at(3)->getNodeType();
+        } catch (const std::out_of_range& e) { }
+
+        if (children[1]->getNodeType() == "PROC_HEAD" && children[2]->getNodeType() == "COMMANDS") {
+            assembly << "*PROC_" + children[1]->token->getValue() << " ";           // Label procedure
+            children[1]->build();                                                   // Build proc_head
+            assembly << children[2]->build();                                       // Build procedure
+            for (auto arg : children[1]->token->getArgs()){
+
+            }
+            assembly << "RTRN " << children[1]->token->getAddress() << std::endl;   // Return to the caller
         }
-        assembly << "*PROC_" + children[1]->token->getValue() << " ";           // Label procedure
-        children[1]->build();                                                   // Build proc_head
-        assembly << children[2]->build();                                       // Build procedure
-        assembly << "RTRN " << children[1]->token->getAddress() << std::endl;   // Return to the caller
 
         return assembly.str();
     }
@@ -292,7 +299,7 @@ public:
         std::ostringstream assembly;
         // 0 - identifier, 1 - expression
 
-        if (children[0]->token->getFunction() == TokenFunction::ARG){
+        if (children[0]->token->getFunction() == TokenFunction::ARG || children[0]->token->getFunction() == TokenFunction::T_ARG){
             if (children[0]->getNodeType() == "IDENTIFIER") {
                 assembly << children[1]->build();                                       // Put value into R4
                 assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Load address from arg's address
@@ -301,8 +308,9 @@ public:
                 assembly << "STOREI " << 3 << std::endl;                                // Store value into variable's addres
             }
             else {
+                // TODO
                 assembly << children[0]->children[0]->build();                          // Store index in R4
-                assembly << "LOAD " << children[0]->token->getAddress() << std::endl;    // Get address of index0
+                assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Get address of index0
                 assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
                 assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
                 assembly << children[1]->build();                                       // Put value into R4
@@ -317,12 +325,14 @@ public:
                 assembly << "STORE " << children[0]->token->getAddress() << std::endl;  // Store value into variable's addres
             }
             else {
+                assembly << children[1]->build();                                       // Put value into R4
+                assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+                assembly << "STORE " << 1 << std::endl;                                 // Store value in R1
                 assembly << children[0]->children[0]->build();                          // Store index in R4
                 assembly << "SET " << children[0]->token->getAddress() << std::endl;    // Get address of index0
                 assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
                 assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
-                assembly << children[1]->build();                                       // Put value into R4
-                assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+                assembly << "LOAD " << 1 << std::endl;                                  // Load value from R1
                 assembly << "STOREI " << 3 << std::endl;                                // Store value in table
             }
         }
@@ -604,7 +614,7 @@ public:
             assembly << "JUMP " << 2 << std::endl;      // Jump 2 lines to avoid unnecessary load
             assembly << "LOAD " << 4 << std::endl;      // Load result
             assembly << "STORE " << 4 << std::endl;     // Store result in R4
-        } else if (operation == "/") {                  // TODO : make it work for -1/2
+        } else if (operation == "/") {
             /*
             1 - a
             2 - b
@@ -613,39 +623,39 @@ public:
             7 - sign
             8 - temp_counter
             */
+            assembly << "LOAD " << 5 << std::endl;
+            assembly << "STORE " << 7 << std::endl;     // Zero sign
             assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "JZERO " << "*DIV_BY_ZERO_" << id << std::endl;      // If b = 0 jump 3 lines forward
+            assembly << "JZERO " << "*DIV_BY_ZERO_" << id << std::endl;      // If b = 0 return 0
             assembly << "STORE " << 2 << std::endl;     // Store b in R1
             assembly << "JNEG " << 2 << std::endl;      // If b < 0 jump 2 lines forward
-            assembly << "JUMP " << 6 << std::endl;      // Jump 6 lines to a check
+            assembly << "JUMP " << 7 << std::endl;      // Jump 7 lines to a check
             assembly << "SUB " << 2 << std::endl;       //! -b
             assembly << "SUB " << 2 << std::endl;       // Make number positive
             assembly << "STORE " << 2 << std::endl;     // Store positive b
             assembly << "LOAD " << 6 << std::endl;      // Load 1
+            assembly << "ADD " << 6 << std::endl;       // Make it 2
             assembly << "STORE " << 7 << std::endl;     // Set sign to negative (R7)
             assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "JZERO " << "*DIV_BY_ZERO_" << id << std::endl;      // If b = 0 jump 3 lines forward
+            assembly << "JZERO " << "*DIV_BY_ZERO_" << id << std::endl;      // If b = 0 return 0
             assembly << "STORE " << 1 << std::endl;     // Store a in R1
             assembly << "JNEG " << 2 << std::endl;      // If a < 0 jump 2 lines forward
-            assembly << "JUMP " << 11 << std::endl;     // Jump _ lines to a check
+            assembly << "JUMP " << 7 << std::endl;      // Jump 7 lines to a check
             assembly << "SUB " << 1 << std::endl;       //! -a
             assembly << "SUB " << 1 << std::endl;       // Make number positive
             assembly << "STORE " << 1 << std::endl;     // Store positive a
             assembly << "LOAD " << 7 << std::endl;      // Load sign
-            assembly << "JPOS " << 4 << std::endl;      // If sign = 1 jump 4 lines forward
-            assembly << "ADD " << 6 << std::endl;       // Set sign to negative
-            assembly << "STORE " << 7 << std::endl;     // Store negative sign
-            assembly << "JUMP " << 3 << std::endl;      // Jump 3 lines to the end of the sign check
-            assembly << "HALF" << std::endl;            // Set sign to positive
-            assembly << "STORE " << 7 << std::endl;     // Store positive sign
-            assembly << "LOAD " << 6 << std::endl;      // Load 0
+            assembly << "ADD " << 6 << std::endl;       // Add 1
+            assembly << "STORE " << 7 << std::endl;     // Store sign
+
+            assembly << "LOAD " << 6 << std::endl;      // Load 1
             assembly << "STORE " << 8 << std::endl;     // Set temp_counter to 1
             assembly << "HALF" << std::endl;            // Set 0
             assembly << "STORE " << 4 << std::endl;     // Set counter to 0
 
-            assembly << "*DIV_START_LOOP_" << id << " ";      // Label START of the division
+            assembly << "*DIV_START_LOOP_" << id << " ";// Label START of the division
             assembly << "LOAD " << 2 << std::endl;      // Load b
             assembly << "STORE " << 3 << std::endl;     // Store temp_b
             assembly << "*DIV_LOOP_" << id << " ";      // Label START of the division loop
@@ -658,8 +668,8 @@ public:
             assembly << "LOAD " << 3 << std::endl;      // Load temp_b
             assembly << "ADD " << 3 << std::endl;       // Double temp_b
             assembly << "STORE " << 3 << std::endl;     // Store doubled temp_b
-            assembly << "JUMP " << "*DIV_LOOP_" << id << std::endl;      // Jump to the end of the loop
-            assembly << "*DIV_END_LOOP_" << id << " ";      // Label END of the division
+            assembly << "JUMP " << "*DIV_LOOP_" << id << std::endl;         // Jump to the end of the loop
+            assembly << "*DIV_END_LOOP_" << id << " ";  // Label END of the division
             assembly << "LOAD " << 8 << std::endl;      // Load temp_counter
             assembly << "HALF" << std::endl;            // Half temp_counter
             assembly << "STORE " << 8 << std::endl;     // Store halfed temp_counter
@@ -672,22 +682,40 @@ public:
             assembly << "SUB " << 3 << std::endl;       // Subtract temp_b from a
             assembly << "STORE " << 1 << std::endl;     // Store a
             assembly << "SUB " << 2 << std::endl;       // Subtract b from a
-            assembly << "JNEG " << "*DIV_END_" << id << std::endl;      // If a < b jump to the end
-            assembly << "LOAD " << 6 << std::endl;      // Load 0
+            assembly << "JNEG " << "*DIV_SIGN_" << id << std::endl;         // If a < b jump to the end
+            assembly << "LOAD " << 6 << std::endl;      // Load 1
             assembly << "STORE " << 8 << std::endl;     // Reset temp_counter
-            assembly << "JUMP " << "*DIV_START_LOOP_" << id << std::endl;      // Jump to the start of the loop
+            assembly << "JUMP " << "*DIV_START_LOOP_" << id << std::endl;   // Jump to the start of the loop
 
-            assembly << "*DIV_END_" << id << " ";        // Label END of the division
+            assembly << "*DIV_SIGN_" << id << " ";      // Label END of the division
             assembly << "LOAD " << 7 << std::endl;      // Load sign
-            assembly << "JZERO " << 5 << std::endl;     // If sign is positive jump 5 lines forward
-            assembly << "LOAD " << 4 << std::endl;      // Load result
-            assembly << "SUB " << 4 << std::endl;
-            assembly << "SUB " << 4 << std::endl;       // Negate result
-            assembly << "JUMP " << 2 << std::endl;      // Jump 2 lines to avoid unnecessary load
-            assembly << "LOAD " << 4 << std::endl;      // Load result
+            assembly << "JZERO " << "*DIV_pp_" << id << std::endl; // Jump to a, b > 0
+            assembly << "SUB " << 6 << std::endl;       // Substract 1
+            assembly << "JZERO " << "*DIV_np_" << id << std::endl; // Jump to a > 0, b < 0
+            assembly << "SUB " << 6 << std::endl;       // Substract 1
+            assembly << "JZERO " << "*DIV_pn_" << id << std::endl; // Jump to a < 0, b > 0
 
+            assembly << "*DIV_pp_" << id << " ";        // Case a, b > 0 and a, b < 0
+            assembly << "LOAD " << 4 << std::endl;      // Load result
+            assembly << "JUMP " << "*DIV_RETURN_" << id << std::endl;       // Jump to the return
+            assembly << "*DIV_pn_" << id << " ";
+            assembly << "LOAD " << 4 << std::endl;      // Load result
+            assembly << "ADD " << 6 << std::endl;       // Add 1
+            assembly << "STORE " << 8 << std::endl;     // Temporarly store value
+            assembly << "SUB " << 8 << std::endl;
+            assembly << "SUB " << 8 << std::endl;       // Make it negative
+            assembly << "JUMP " << "*DIV_RETURN_" << id << std::endl;       // Jump to the return
+            assembly << "*DIV_np_" << id << " ";
+            assembly << "LOAD " << 4 << std::endl;      // Load result
+            assembly << "ADD " << 6 << std::endl;       // Add 1
+            assembly << "STORE " << 8 << std::endl;     // Temporarly store value
+            assembly << "SUB " << 8 << std::endl;
+            assembly << "SUB " << 8 << std::endl;       // Make it negative
+            assembly << "JUMP " << "*DIV_RETURN_" << id << std::endl;       // Jump to the return
+
+            assembly << "*DIV_RETURN_" << id << " ";
             assembly << "JUMP " << 2 << std::endl;      // Jump over the division by 0
-            assembly << "*DIV_BY_ZERO_" << id << " ";        // Label END of the division
+            assembly << "*DIV_BY_ZERO_" << id << " ";   // Label END of the division
             assembly << "LOAD " << 5 << std::endl;      // Load 0
             assembly << "STORE " << 4 << std::endl;     // Store result in R4
         } else if (operation == "%") {                  // TODO : make it work for -1/2
@@ -699,39 +727,39 @@ public:
             7 - sign
             8 - temp_counter
             */
+            assembly << "LOAD " << 5 << std::endl;
+            assembly << "STORE " << 7 << std::endl;     // Zero sign
             assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "JZERO " << "*MOD_BY_ZERO_" << id << std::endl;      // If b = 0 jump 3 lines forward
+            assembly << "JZERO " << "*MOD_BY_ZERO_" << id << std::endl;      // If b = 0 return 0
             assembly << "STORE " << 2 << std::endl;     // Store b in R1
             assembly << "JNEG " << 2 << std::endl;      // If b < 0 jump 2 lines forward
-            assembly << "JUMP " << 6 << std::endl;      // Jump 6 lines to a check
+            assembly << "JUMP " << 7 << std::endl;      // Jump 7 lines to a check
             assembly << "SUB " << 2 << std::endl;       //! -b
             assembly << "SUB " << 2 << std::endl;       // Make number positive
             assembly << "STORE " << 2 << std::endl;     // Store positive b
             assembly << "LOAD " << 6 << std::endl;      // Load 1
+            assembly << "ADD " << 6 << std::endl;       // Make it 2
             assembly << "STORE " << 7 << std::endl;     // Set sign to negative (R7)
             assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
-            assembly << "JZERO " << "*MOD_BY_ZERO_" << id << std::endl;      // If b = 0 jump 3 lines forward
+            assembly << "JZERO " << "*MOD_BY_ZERO_" << id << std::endl;      // If b = 0 return 0
             assembly << "STORE " << 1 << std::endl;     // Store a in R1
             assembly << "JNEG " << 2 << std::endl;      // If a < 0 jump 2 lines forward
-            assembly << "JUMP " << 11 << std::endl;     // Jump _ lines to a check
+            assembly << "JUMP " << 7 << std::endl;      // Jump 7 lines to a check
             assembly << "SUB " << 1 << std::endl;       //! -a
             assembly << "SUB " << 1 << std::endl;       // Make number positive
             assembly << "STORE " << 1 << std::endl;     // Store positive a
             assembly << "LOAD " << 7 << std::endl;      // Load sign
-            assembly << "JPOS " << 4 << std::endl;      // If sign = 1 jump 4 lines forward
-            assembly << "ADD " << 6 << std::endl;       // Set sign to negative
-            assembly << "STORE " << 7 << std::endl;     // Store negative sign
-            assembly << "JUMP " << 3 << std::endl;      // Jump 3 lines to the end of the sign check
-            assembly << "HALF" << std::endl;            // Set sign to positive
-            assembly << "STORE " << 7 << std::endl;     // Store positive sign
-            assembly << "LOAD " << 6 << std::endl;      // Load 0
+            assembly << "ADD " << 6 << std::endl;       // Add 1
+            assembly << "STORE " << 7 << std::endl;     // Store sign
+
+            assembly << "LOAD " << 6 << std::endl;      // Load 1
             assembly << "STORE " << 8 << std::endl;     // Set temp_counter to 1
             assembly << "HALF" << std::endl;            // Set 0
             assembly << "STORE " << 4 << std::endl;     // Set counter to 0
 
-            assembly << "*MOD_START_LOOP_" << id << " ";      // Label START of the division
+            assembly << "*MOD_START_LOOP_" << id << " ";// Label START of the division
             assembly << "LOAD " << 2 << std::endl;      // Load b
             assembly << "STORE " << 3 << std::endl;     // Store temp_b
             assembly << "*MOD_LOOP_" << id << " ";      // Label START of the division loop
@@ -744,8 +772,8 @@ public:
             assembly << "LOAD " << 3 << std::endl;      // Load temp_b
             assembly << "ADD " << 3 << std::endl;       // Double temp_b
             assembly << "STORE " << 3 << std::endl;     // Store doubled temp_b
-            assembly << "JUMP " << "*MOD_LOOP_" << id << std::endl;      // Jump to the end of the loop
-            assembly << "*MOD_END_LOOP_" << id << " ";      // Label END of the division
+            assembly << "JUMP " << "*MOD_LOOP_" << id << std::endl;         // Jump to the end of the loop
+            assembly << "*MOD_END_LOOP_" << id << " ";  // Label END of the division
             assembly << "LOAD " << 8 << std::endl;      // Load temp_counter
             assembly << "HALF" << std::endl;            // Half temp_counter
             assembly << "STORE " << 8 << std::endl;     // Store halfed temp_counter
@@ -755,19 +783,41 @@ public:
             assembly << "HALF" << std::endl;            // Half temp_b
             assembly << "STORE " << 3 << std::endl;     // Store halfed temp_b
             assembly << "LOAD " << 1 << std::endl;      // Load a
+            assembly << "SUB " << 2 << std::endl;       // Subtract b from a
+            assembly << "JNEG " << "*MOD_SIGN_" << id << std::endl;         // If a < b jump to the end
+            assembly << "LOAD " << 1 << std::endl;      // Load a
             assembly << "SUB " << 3 << std::endl;       // Subtract temp_b from a
             assembly << "STORE " << 1 << std::endl;     // Store a
-            assembly << "SUB " << 2 << std::endl;       // Subtract b from a
-            assembly << "JNEG " << "*MOD_END_" << id << std::endl;      // If a < b jump to the end
-            assembly << "LOAD " << 6 << std::endl;      // Load 0
+            assembly << "LOAD " << 6 << std::endl;      // Load 1
             assembly << "STORE " << 8 << std::endl;     // Reset temp_counter
-            assembly << "JUMP " << "*MOD_START_LOOP_" << id << std::endl;      // Jump to the start of the loop
+            assembly << "JUMP " << "*MOD_START_LOOP_" << id << std::endl;   // Jump to the start of the loop
 
-            assembly << "*MOD_END_" << id << " ";        // Label END of the division
-            assembly << "LOAD " << 1 << std::endl;      // Load a
+            assembly << "*MOD_SIGN_" << id << " ";      // Label END of the division
+            assembly << "LOAD " << 7 << std::endl;      // Load sign
+            assembly << "JZERO " << "*MOD_pp_" << id << std::endl; // Jump to a, b > 0
+            assembly << "SUB " << 6 << std::endl;       // Substract 1
+            assembly << "JZERO " << "*MOD_np_" << id << std::endl; // Jump to a > 0, b < 0
+            assembly << "SUB " << 6 << std::endl;       // Substract 1
+            assembly << "JZERO " << "*MOD_pn_" << id << std::endl; // Jump to a < 0, b > 0
 
+            assembly << "LOAD " << 5 << std::endl;      // Case a, b < 0
+            assembly << "SUB " << 1 << std::endl;       // Negate result
+            assembly << "JUMP " << "*MOD_RETURN_" << id << std::endl;       // Jump to the return
+            assembly << "*MOD_pp_" << id << " ";
+            assembly << "LOAD " << 1 << std::endl;      // Load result
+            assembly << "JUMP " << "*MOD_RETURN_" << id << std::endl;       // Jump to the return
+            assembly << "*MOD_pn_" << id << " ";
+            assembly << "LOAD " << 1 << std::endl;      // Load result
+            assembly << "SUB " << 2 << std::endl;       // Sub b
+            assembly << "JUMP " << "*MOD_RETURN_" << id << std::endl;       // Jump to the return
+            assembly << "*MOD_np_" << id << " ";
+            assembly << "LOAD " << 2 << std::endl;      // Load b
+            assembly << "SUB " << 1 << std::endl;       // Sub result
+            assembly << "JUMP " << "*MOD_RETURN_" << id << std::endl;       // Jump to the return
+
+            assembly << "*MOD_RETURN_" << id << " ";
             assembly << "JUMP " << 2 << std::endl;      // Jump over the division by 0
-            assembly << "*MOD_BY_ZERO_" << id << " ";        // Label END of the division
+            assembly << "*MOD_BY_ZERO_" << id << " ";   // Label END of the division
             assembly << "LOAD " << 5 << std::endl;      // Load 0
             assembly << "STORE " << 4 << std::endl;     // Store result in R4
         }

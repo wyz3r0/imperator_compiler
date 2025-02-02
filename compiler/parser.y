@@ -45,7 +45,7 @@ long long expression_counter = 0;
 
 Token* manageToken(Token* newToken) {
     if (proc_counter != -1 && newToken->getFunction() != TokenFunction::PROC && newToken->getType() == TokenType::IDENTIFIER) {
-        newToken->setValue(std::to_string(proc_counter) + "-" + newToken->getValue());
+        newToken->setAssignability(true)->setValue(std::to_string(proc_counter) + "-" + newToken->getValue());
     }
 
     auto it = std::find_if(tokens.begin(), tokens.end(),
@@ -67,13 +67,12 @@ Token* manageTabel(Token* identifier, Token* lower_bound, Token* upper_bound) {
         LOG_ERROR("Lower bound is greater than upper bound", identifier);
     }
 
+    if (proc_counter != -1 && identifier->getFunction() != TokenFunction::PROC && identifier->getType() == TokenType::IDENTIFIER) {
+        identifier->setAssignability(true)->setValue(std::to_string(proc_counter) + "-" + identifier->getValue());
+    }
+
     identifier->setAddress(var_counter-std::stoll(lower_bound->getValue()));    // Set absolute address of 0th index
     tokens.push_back(identifier);                                               // Add identifier to the tokens withh 0th index's address
-
-    // for (long long i = std::stoll(lower_bound->getValue()); i <= std::stoll(upper_bound->getValue()); i++) {
-    //     tokens.push_back(new Token(TokenType::IDENTIFIER, identifier->getValue() + std::to_string(i), identifier->getColumn(), identifier->getLine(), var_counter, true));
-    //     var_counter++;
-    // }
 
     var_counter += std::stoll(upper_bound->getValue()) - std::stoll(lower_bound->getValue()) + 1;
 
@@ -167,7 +166,7 @@ program_all:
 /* TODO : seg fault for over 2 procedures */
 procedures:
     procedures PROCEDURE proc_head IS declarations T_BEGIN commands END {
-        $$ = new ProceduresNode();
+        $$ = new ProceduresNode($2, proc_counter);
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($7);  // Add commands
@@ -176,7 +175,7 @@ procedures:
         printf("Parsed procedures with declarations\n");
     }
     | procedures PROCEDURE proc_head IS T_BEGIN commands END {
-        $$ = new ProceduresNode();
+        $$ = new ProceduresNode($2, proc_counter);
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($6);  // Add commands
