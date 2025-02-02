@@ -314,13 +314,14 @@ public:
                 assembly << "STOREI " << 3 << std::endl;                                // Store value into variable's addres
             }
             else {
-                // TODO
+                assembly << children[1]->build();                                       // Put value into R4
+                assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+                assembly << "STORE " << 1 << std::endl;                                 // Store value in R1
                 assembly << children[0]->children[0]->build();                          // Store index in R4
                 assembly << "LOAD " << children[0]->token->getAddress() << std::endl;   // Get address of index0
                 assembly << "ADD " << 4 << std::endl;                                   // Calculate absolute address
                 assembly << "STORE " << 3 << std::endl;                                 // Store value in R3
-                assembly << children[1]->build();                                       // Put value into R4
-                assembly << "LOAD " << 4 << std::endl;                                  // Load value from R4
+                assembly << "LOAD " << 1 << std::endl;                                  // Load value from R1
                 assembly << "STOREI " << 3 << std::endl;                                // Store value in table
             }
         }
@@ -559,7 +560,7 @@ public:
             assembly << "STORE " << 4 << std::endl;     // Store result in R4
         } else if (operation == "*") {
             assembly << "LOAD " << 5 << std::endl;      // Load 0
-            assembly << "STORE " << 3 << std::endl;     // Set sign to positive
+            assembly << "STORE " << 7 << std::endl;     // Set sign to positive
             assembly << children[1]->build();           // Get b into R4
             assembly << "LOAD " << 4 << std::endl;
             assembly << "STORE " << 2 << std::endl;     // Store b in R2
@@ -569,7 +570,7 @@ public:
             assembly << "SUB " << 2 << std::endl;       // Make number positive
             assembly << "STORE " << 2 << std::endl;     // Store positive b
             assembly << "LOAD " << 6 << std::endl;      // Load 1
-            assembly << "STORE " << 3 << std::endl;     // Set sign to negative
+            assembly << "STORE " << 7 << std::endl;     // Set sign to negative
             assembly << children[0]->build();           // Get a into R4
             assembly << "LOAD " << 4 << std::endl;
             assembly << "STORE " << 1 << std::endl;     // Store a in R1
@@ -578,13 +579,13 @@ public:
             assembly << "SUB " << 1 << std::endl;       //! -a
             assembly << "SUB " << 1 << std::endl;       // Make number positive
             assembly << "STORE " << 1 << std::endl;     // Store positive a
-            assembly << "LOAD " << 3 << std::endl;      // Load sign
+            assembly << "LOAD " << 7 << std::endl;      // Load sign
             assembly << "JPOS " << 4 << std::endl;      // If sign = 1 jump 4 lines forward
             assembly << "ADD " << 6 << std::endl;       // Set sign to negative
-            assembly << "STORE " << 3 << std::endl;     // Store negative sign
+            assembly << "STORE " << 7 << std::endl;     // Store negative sign
             assembly << "JUMP " << 3 << std::endl;      // Jump 3 lines to the end of the sign check
             assembly << "HALF" << std::endl;            // Set sign to positive
-            assembly << "STORE " << 3 << std::endl;     // Store positive sign
+            assembly << "STORE " << 7 << std::endl;     // Store positive sign
             assembly << "LOAD " << 1 << std::endl;      // Load a
             assembly << "SUB " << 2 << std::endl;       // Subtract b from a
             assembly << "JPOS " << 7 << std::endl;      // If a > b skip swapping a and b
@@ -612,7 +613,7 @@ public:
             assembly << "ADD " << 1 << std::endl;       // Double a
             assembly << "STORE " << 1 << std::endl;     // Store doubled a
             assembly << "JUMP " << -15 << std::endl;    // Jump to the beginning
-            assembly << "LOAD " << 3 << std::endl;      // Load sign
+            assembly << "LOAD " << 7 << std::endl;      // Load sign
             assembly << "JZERO " << 5 << std::endl;     // If sign = 0 jump 4 lines to the end
             assembly << "LOAD " << 4 << std::endl;      // Load result
             assembly << "SUB " << 4 << std::endl;
@@ -724,7 +725,7 @@ public:
             assembly << "*DIV_BY_ZERO_" << id << " ";   // Label END of the division
             assembly << "LOAD " << 5 << std::endl;      // Load 0
             assembly << "STORE " << 4 << std::endl;     // Store result in R4
-        } else if (operation == "%") {                  // TODO : make it work for -1/2
+        } else if (operation == "%") {
             /*
             1 - a
             2 - b
