@@ -13,6 +13,7 @@ A .imp compiler project for JFTT 2024 at Wrocław University of Science and Tech
   - [Example](#example)
   - [File Structure](#file-structure)
   - [License](#license)
+  - [Authors](#authors)
 
 ## Introduction
 
@@ -73,12 +74,17 @@ To compile a `.imp` file, use the following command:
   - `main.cpp`: The main entry point for the compiler.
   - `Makefile`: Build script for the compiler.
 - `.gitignore`: Gitignore file.
-- `labor4.pdf`: Specyfication in polish.
-- `labor4.zip`: VM source code and examples.
+- `labor4.pdf`: Specyfication in polish by [dr Maciej Gębala](https://cs.pwr.edu.pl/gebala/).
+- `labor4.zip`: VM source code and examples by [dr Maciej Gębala](https://cs.pwr.edu.pl/gebala/).
 - `LICENSE`: LICENSE
 - `README.md`: This README file.
 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Authors
+
+- **Author**: [Dobrosław Dębicki](https://github.com/wyz3r0)
+- **Professor**: [dr Maciej Gębala](https://cs.pwr.edu.pl/gebala/)
 
