@@ -21,7 +21,8 @@ enum class TokenFunction {
     TABLE,      // Default table variable
     ARG,        // Procedure argument
     T_ARG,      // Procedure argument that is a table
-    PROC        // Return address
+    PROC,       // Return address
+    ITERATOR    // Iterator
 };
 
 class Token {
@@ -37,6 +38,7 @@ public:
     bool getAssignibility() const { return reassignable; }
     TokenFunction getFunction() const { return function; }
     std::vector<Token*> getArgs() const { return args; }
+    bool isInitialized() const { return initialized; }
 
     void setAddress(long long addr) { this->address = addr; }
     void setValue(std::string value) { this->value = value; }
@@ -44,6 +46,7 @@ public:
     Token* setAssignability(bool reass) { this->reassignable = reass; return this; }
     void addArg(Token* arg) { this->args.push_back(arg); }
     void setArgs(const std::vector<Token*>& args) { this->args = args; }
+    Token* initialize() { this->initialized = true;  return this; }
 
     void print() const {
         std::cout << "Token(Type: " << tokenTypeToString(type)
@@ -64,6 +67,7 @@ private:
     bool reassignable;
     TokenFunction function;
     std::vector<Token*> args;
+    bool initialized = false;
 
     static std::string tokenTypeToString(TokenType type) {
         switch (type) {
@@ -122,6 +126,7 @@ private:
             case TokenFunction::ARG: return "ARGUMENT";
             case TokenFunction::T_ARG: return "TABLE_ARGUMENT";
             case TokenFunction::TABLE: return "TABLE";
+            case TokenFunction::ITERATOR: return "ITERATOR";
             default: return "DEFAULT";
         }
     }

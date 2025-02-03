@@ -16,6 +16,7 @@
 #include "ErrorHandler.hpp"
 
 extern const std::string parsedFileName;
+extern const std::string outputFileName;
 extern FILE *yyin;
 extern int yylex();
 extern int yyparse();
@@ -35,6 +36,7 @@ int yyerror(std::string s);
 */
 
 std::vector<Token*> tokens;
+std::vector<Token*> procs;
 
 long long var_counter = 9;
 long long proc_counter = 0;
@@ -43,22 +45,39 @@ long long command_counter = 0;
 long long expression_counter = 0;
 
 
-Token* manageToken(Token* newToken) {
-    if (proc_counter != -1 && newToken->getFunction() != TokenFunction::PROC && newToken->getType() == TokenType::IDENTIFIER) {
+Token* manageToken(Token* newToken, bool declaration = false, bool declarationInProc = false) {
+    if (proc_counter != -1 && newToken->getFunction() != TokenFunction::PROC
+                           && newToken->getFunction() != TokenFunction::TABLE
+                           && newToken->getType() == TokenType::IDENTIFIER)
         newToken->setAssignability(true)->setValue(std::to_string(proc_counter) + "-" + newToken->getValue());
-    }
 
     auto it = std::find_if(tokens.begin(), tokens.end(),
                            [&newToken](Token* token) { return token->getValue() == newToken->getValue(); });
 
     if (it != tokens.end()) {
+        if (newToken->isInitialized())
+            (*it)->initialize();
+        if (declaration && (((*it)->getFunction() == TokenFunction::T_ARG && newToken->getFunction() == TokenFunction::TABLE)
+                        || ((*it)->getFunction() == TokenFunction::T_ARG && newToken->getFunction() == TokenFunction::T_ARG)
+                        || ((*it)->getFunction() == TokenFunction::T_ARG && newToken->getFunction() == TokenFunction::DEFAULT)
+                        || ((*it)->getFunction() == TokenFunction::T_ARG && newToken->getFunction() == TokenFunction::ARG)
+                        || ((*it)->getFunction() == TokenFunction::ARG && newToken->getFunction() == TokenFunction::TABLE)
+                        || ((*it)->getFunction() == TokenFunction::ARG && newToken->getFunction() == TokenFunction::T_ARG)
+                        || ((*it)->getFunction() == TokenFunction::ARG && newToken->getFunction() == TokenFunction::DEFAULT)
+                        || ((*it)->getFunction() == TokenFunction::ARG && newToken->getFunction() == TokenFunction::ARG)))
+            LOG_ERROR("Cannot create multiple variables with the same name in the same scope.", newToken);
+        if (declaration && (*it)->getFunction() == TokenFunction::PROC)
+            LOG_ERROR("Cannot create multiple procedures with the same name.", newToken);
         return *it;
     }
 
-    newToken->setAddress(var_counter);
+    if (newToken->getFunction() != TokenFunction::TABLE)
+        newToken->setAddress(var_counter);
     tokens.push_back(newToken);
     var_counter++;
 
+    if (!declaration && newToken->getType() != TokenType::NUMBER)
+        LOG_ERROR("Undeclared variable.", newToken);
     return newToken;
 }
 
@@ -68,19 +87,18 @@ Token* manageTabel(Token* identifier, Token* lower_bound, Token* upper_bound) {
     }
 
     if (proc_counter != -1 && identifier->getFunction() != TokenFunction::PROC && identifier->getType() == TokenType::IDENTIFIER) {
-        identifier->setAssignability(true)->setValue(std::to_string(proc_counter) + "-" + identifier->getValue());
+        identifier->setAssignability(false)->setValue(std::to_string(proc_counter) + "-" + identifier->getValue());
     }
 
     identifier->setAddress(var_counter-std::stoll(lower_bound->getValue()));    // Set absolute address of 0th index
-    tokens.push_back(identifier);                                               // Add identifier to the tokens withh 0th index's address
+    manageToken(identifier, true);                                              // Add identifier to the tokens withh 0th index's address
 
-    var_counter += std::stoll(upper_bound->getValue()) - std::stoll(lower_bound->getValue()) + 1;
+    var_counter += std::stoll(upper_bound->getValue()) - std::stoll(lower_bound->getValue());
 
     return identifier;
 }
 
 bool saveToFile(const std::string& content) {
-    std::string outputFileName = parsedFileName + ".mr";
     std::ofstream outFile(outputFileName);
     if (outFile.is_open()) {
         outFile << content;
@@ -120,6 +138,7 @@ void vibecheck(){
 %left  T_LPAREN T_LBRACKET
 
 %type <node> procedures main commands command proc_head proc_call declarations args_decl args expression condition value identifier number
+%type <token> for_init
 
 %start program_all
 
@@ -128,8 +147,10 @@ void vibecheck(){
 program_all:
     {   // INIT
         // Reserve addresses 5 and 6 for bools.
-        tokens.push_back(new Token(TokenType::NUMBER, "0", 0, 0, 5, false));
-        tokens.push_back(new Token(TokenType::NUMBER, "1", 0, 0, 6, false));
+        Token* zero = new Token(TokenType::NUMBER, "0", 0, 0, 5, false);
+        Token* one = new Token(TokenType::NUMBER, "1", 0, 0, 6, false);
+        tokens.push_back(zero->initialize());
+        tokens.push_back(one->initialize());
     }
     procedures { proc_counter = -1; } main {
         vibecheck();
@@ -144,6 +165,8 @@ program_all:
         AST->print();
         for (auto token : tokens) {
             token->print();
+            if (!token->isInitialized() && token->getFunction() != TokenFunction::PROC)
+                LOG_ERROR("Uninitialized variable.", token);
         }
 
         // Build assembly.
@@ -170,6 +193,7 @@ procedures:
         $$->addChild($3);  // Add proc_head
         $$->addChild($7);  // Add commands
         $$->addChild($5);  // Add declarations
+        procs.push_back($3->token);
         proc_counter++;
         printf("Parsed procedures with declarations\n");
     }
@@ -178,6 +202,7 @@ procedures:
         $$->addChild($1);  // Add previous procedures
         $$->addChild($3);  // Add proc_head
         $$->addChild($6);  // Add commands
+        procs.push_back($3->token);
         proc_counter++;
         printf("Parsed procedures without declarations\n");
     }
@@ -189,7 +214,7 @@ procedures:
 
 proc_head:
     IDENTIFIER T_LPAREN args_decl T_RPAREN {
-        $$ = new ProcHeadNode(manageToken($1->setFunction(TokenFunction::PROC))); // Add IDENTIFIER token
+        $$ = new ProcHeadNode(manageToken($1->setFunction(TokenFunction::PROC), true)); // Add IDENTIFIER token
         $$->addChild($3);  // Add arguments declaration
         printf("Parsed procedure head\n");
     }
@@ -199,39 +224,45 @@ proc_call:
     IDENTIFIER T_LPAREN args T_RPAREN {
         $$ = new ProcCallNode(manageToken($1->setFunction(TokenFunction::PROC))); // Add IDENTIFIER token
         $$->addChild($3);  // Add arguments
+        std::string token_value = $1->getValue();
+        bool found = std::any_of(procs.begin(), procs.end(), [token_value](Token* t) {
+            return t->getValue() == token_value;
+        });
+        if (!found)
+            LOG_ERROR("Cannot call procedure inside itself.", $1);
         printf("Parsed procedure call\n");
     }
     ;
 
 args_decl:
     args_decl T_COMMA IDENTIFIER {
-        $$ = new ArgsDeclNode(manageToken($3->setFunction(TokenFunction::ARG)));  // Add IDENTIFIER token
+        $$ = new ArgsDeclNode(manageToken($3->setFunction(TokenFunction::ARG)->initialize(), true));  // Add IDENTIFIER token
         $$->addChild($1);  // Add previous argument declaration
         printf("Parsed arguments declaration (multiple)\n");
     }
     | args_decl T_COMMA T_TABLE IDENTIFIER {
-        $$ = new ArgsDeclNode(manageToken($4->setFunction(TokenFunction::T_ARG)));  // Add IDENTIFIER token
+        $$ = new ArgsDeclNode(manageToken($4->setFunction(TokenFunction::T_ARG)->initialize(), true));  // Add IDENTIFIER token
         $$->addChild($1);  // Add previous argument declaration
         printf("Parsed arguments declaration with table\n");
     }
     | IDENTIFIER {
-        $$ = new ArgsDeclNode(manageToken($1->setFunction(TokenFunction::ARG))); // Add IDENTIFIER token
+        $$ = new ArgsDeclNode(manageToken($1->setFunction(TokenFunction::ARG)->initialize(), true)); // Add IDENTIFIER token
         printf("Parsed single argument declaration\n");
     }
     | T_TABLE IDENTIFIER {
-        $$ = new ArgsDeclNode(manageToken($2->setFunction(TokenFunction::T_ARG))); // Add IDENTIFIER token
+        $$ = new ArgsDeclNode(manageToken($2->setFunction(TokenFunction::T_ARG)->initialize(), true)); // Add IDENTIFIER token
         printf("Parsed single table argument declaration\n");
     }
     ;
 
 args:
     args T_COMMA IDENTIFIER {
-        $$ = new ArgsNode(manageToken($3)); // Add IDENTIFIER token
+        $$ = new ArgsNode(manageToken($3->initialize())); // Add IDENTIFIER token
         $$->addChild($1);  // Add previous arguments
         printf("Parsed arguments (multiple)\n");
     }
     | IDENTIFIER {
-        $$ = new ArgsNode(manageToken($1)); // Add IDENTIFIER token
+        $$ = new ArgsNode(manageToken($1->initialize())); // Add IDENTIFIER token
         printf("Parsed single argument\n");
     }
     ;
@@ -272,6 +303,7 @@ command:
     identifier T_ASSIGN expression T_SEMICOLON {
         // TODO: check if the identifier is reassignable
         $$ = new AssignmentCommandNode($2, command_counter++);
+        $1->token->initialize();
         $$->addChild($1);  // Add IDENTIFIER token
         $$->addChild($3);  // Add the expression
         printf("Parsed assignment command\n");
@@ -301,20 +333,20 @@ command:
         $$->addChild($4);  // Add condition
         printf("Parsed REPEAT command\n");
     }
-    | FOR IDENTIFIER FROM value TO value DO commands ENDFOR {
+    | for_init FROM value TO value DO commands ENDFOR {
         // TODO: error if identifier has the same value as initialized variable
-        $$ = new ForToCommandNode(manageToken($2), command_counter++); // Add IDENTIFIER token
-        $$->addChild($4);  // Add the first value
-        $$->addChild($6);  // Add the second value
-        $$->addChild($8);  // Add commands
+        $$ = new ForToCommandNode($1, command_counter++); // Add IDENTIFIER token
+        $$->addChild($3);  // Add the first value
+        $$->addChild($5);  // Add the second value
+        $$->addChild($7);  // Add commands
         printf("Parsed FOR command (TO)\n");
     }
-    | FOR IDENTIFIER FROM value DOWNTO value DO commands ENDFOR {
+    | for_init FROM value DOWNTO value DO commands ENDFOR {
         // TODO: error if identifier has the same value as initialized variable
-        $$ = new ForDownToCommandNode(manageToken($2), command_counter++); // Add IDENTIFIER token
-        $$->addChild($4);  // Add the first value
-        $$->addChild($6);  // Add the second value
-        $$->addChild($8);  // Add commands
+        $$ = new ForDownToCommandNode($1, command_counter++); // Add IDENTIFIER token
+        $$->addChild($3);  // Add the first value
+        $$->addChild($5);  // Add the second value
+        $$->addChild($7);  // Add commands
         printf("Parsed FOR command (DOWNTO)\n");
     }
     | proc_call T_SEMICOLON {
@@ -324,6 +356,7 @@ command:
     }
     | READ identifier T_SEMICOLON {
         $$ = new ReadCommandNode();
+        $2->token->initialize();
         $$->addChild($2);  // Add IDENTIFIER token
         printf("Parsed READ command\n");
     }
@@ -334,9 +367,14 @@ command:
     }
     ;
 
+for_init:
+    FOR IDENTIFIER {
+        $$=manageToken($2->setFunction(TokenFunction::ITERATOR)->initialize(), true);
+    }
+
 declarations:
     declarations T_COMMA IDENTIFIER {
-        $$ = new DeclarationsNode(manageToken($3->setAssignability(true)));  // Add IDENTIFIER token
+        $$ = new DeclarationsNode(manageToken($3->setAssignability(true), true, true));  // Add IDENTIFIER token
         $$->addChild($1);               // Add previous declarations
 
         printf("Parsed declarations (multiple)\n");
@@ -350,7 +388,7 @@ declarations:
         printf("Parsed declarations with array\n");
     }
     | IDENTIFIER {
-        $$ = new DeclarationsNode(manageToken($1->setAssignability(true)));  // Add IDENTIFIER token
+        $$ = new DeclarationsNode(manageToken($1->setAssignability(true), true, true));  // Add IDENTIFIER token
 
         printf("Parsed single declaration\n");
     }
@@ -455,12 +493,13 @@ value:
 
 number:
     NUMBER {
-        $1->setAssignability(false);
+        $1->initialize()->setAssignability(false);
         $$ = new NumberNode(manageToken($1)); // Add NUMBER token
         printf("Parsed number\n");
     }
     | T_MINUS NUMBER {
         Token* negative_number = new Token(TokenType::NUMBER, $1->getValue() + $2->getValue(), $1->getLine(), $2->getColumn(), -1, false);
+        negative_number->initialize();
         // Delete unnecessary tokens
         delete $1;
         $1 = nullptr;
@@ -472,19 +511,26 @@ number:
 
 identifier:
     IDENTIFIER {
-        $$ = new IdentifierNode(manageToken($1));
+        Token* token = manageToken($1);
+        $$ = new IdentifierNode(token);
+        if (token->getFunction() == TokenFunction::TABLE || token->getFunction() == TokenFunction::T_ARG)
+            LOG_ERROR("Improper use of table.", token);
         printf("Parsed identifier\n");
     }
     | IDENTIFIER T_LBRACKET IDENTIFIER T_RBRACKET {
-        Token* index0 = manageToken($1);
+        Token* index0 = manageToken($1->initialize());
         $$ = new TableNode(index0);
         $$->addChild(new IdentifierNode(manageToken($3)));
+        if (!(index0->getFunction() == TokenFunction::TABLE || index0->getFunction() == TokenFunction::T_ARG))
+            LOG_ERROR("Improper use of table.", index0);
         printf("Parsed array identifier (variable index)\n");
     }
     | IDENTIFIER T_LBRACKET number T_RBRACKET {
-        Token* index0 = manageToken($1);
+        Token* index0 = manageToken($1->initialize());
         $$ = new TableNode(index0);
         $$->addChild($3);
+        if (!(index0->getFunction() == TokenFunction::TABLE || index0->getFunction() == TokenFunction::T_ARG))
+            LOG_ERROR("Improper use of table.", index0);
         printf("Parsed array identifier (number index)\n");
     }
     ;

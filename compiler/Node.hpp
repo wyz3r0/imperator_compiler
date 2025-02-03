@@ -207,6 +207,7 @@ public:
             if (args->size() > passed_args->size()){
                 LOG_ERROR("Not enough arguments passed.", token);
             } else {
+                std::cout << args->size() << " | " << passed_args->size() << std::endl;
                 LOG_ERROR("Too many arguments passed.", token);
             }
             return assembly.str();
@@ -216,6 +217,7 @@ public:
             if (!((args->at(i)->getFunction() == TokenFunction::T_ARG && passed_args->at(i)->getFunction() == TokenFunction::TABLE)
                 || (args->at(i)->getFunction() == TokenFunction::T_ARG && passed_args->at(i)->getFunction() == TokenFunction::T_ARG)
                 || (args->at(i)->getFunction() == TokenFunction::ARG && passed_args->at(i)->getFunction() == TokenFunction::DEFAULT)
+                || (args->at(i)->getFunction() == TokenFunction::ARG && passed_args->at(i)->getFunction() == TokenFunction::ITERATOR)
                 || (args->at(i)->getFunction() == TokenFunction::ARG && passed_args->at(i)->getFunction() == TokenFunction::ARG))) {
                 LOG_ERROR("Missmatched argument types.", token);
             }
@@ -304,6 +306,10 @@ public:
     std::string build(std::vector<Token*> *tokens = nullptr) const override {
         std::ostringstream assembly;
         // 0 - identifier, 1 - expression
+
+        if (children[0]->token->getAssignibility() == false && children[0]->token->getFunction() != TokenFunction::TABLE) {
+            LOG_ERROR("Cannot assign token.", children[0]->token);
+        }
 
         if (children[0]->token->getFunction() == TokenFunction::ARG || children[0]->token->getFunction() == TokenFunction::T_ARG){
             if (children[0]->getNodeType() == "IDENTIFIER") {
