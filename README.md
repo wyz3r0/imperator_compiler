@@ -2,6 +2,10 @@
 
 A .imp compiler project for JFTT 2024 at Wrocław University of Science and Technology.
 
+![C++](https://img.shields.io/badge/language-C%2B%2B-blue)
+![Flex](https://img.shields.io/badge/language-Flex-yellow)
+![Bison](https://img.shields.io/badge/language-Bison-green)
+
 ## Table of Contents
 
 - [Imperator Compiler](#imperator-compiler)
